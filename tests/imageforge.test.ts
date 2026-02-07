@@ -320,6 +320,30 @@ describe("CLI integration", () => {
     execSync(`node ${CLI} ${cliDir} -o ${manifestPath}`, { encoding: "utf-8" });
   });
 
+  it("allows reruns with --no-cache", () => {
+    const noCacheDir = path.join(cliDir, "no-cache");
+    fs.mkdirSync(noCacheDir, { recursive: true });
+
+    execSync(
+      `node -e "const sharp=require('sharp'); sharp({create:{width:64,height:48,channels:3,background:{r:10,g:20,b:30}}}).jpeg().toFile(process.argv[1]).then(()=>{}).catch((e)=>{console.error(e);process.exit(1);});" "${path.join(noCacheDir, "a.jpg")}"`,
+      { stdio: "ignore" }
+    );
+
+    const first = execSync(
+      `node ${CLI} ${noCacheDir} --no-cache -o ${path.join(OUTPUT, "no-cache.json")}`,
+      { encoding: "utf-8" }
+    );
+    const second = execSync(
+      `node ${CLI} ${noCacheDir} --no-cache -o ${path.join(OUTPUT, "no-cache.json")}`,
+      { encoding: "utf-8" }
+    );
+
+    expect(first).toContain("1 processed");
+    expect(second).toContain("1 processed");
+
+    fs.rmSync(noCacheDir, { recursive: true, force: true });
+  });
+
   it("--check passes when all processed", () => {
     const result = execSync(
       `node ${CLI} ${cliDir} --check -o ${manifestPath}`,

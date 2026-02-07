@@ -83,10 +83,16 @@ function preflightCollisions(
   items: ImageWorkItem[],
   options: ProcessOptions,
   inputDir: string,
-  cache: Map<string, CacheEntry>,
-  useCache: boolean
+  cache: Map<string, CacheEntry>
 ) {
   const planned = new Map<string, string>();
+  const cacheOwners = new Map<string, string>();
+
+  for (const [source, entry] of cache.entries()) {
+    for (const output of Object.values(entry.result.outputs)) {
+      cacheOwners.set(output.path, source);
+    }
+  }
 
   for (const item of items) {
     for (const format of options.formats) {
@@ -111,15 +117,12 @@ function preflightCollisions(
 
       const fullOutputPath = path.resolve(inputDir, fromPosix(outputPath));
       if (!fs.existsSync(fullOutputPath)) continue;
-
-      const cacheEntry = cache.get(item.relativePath);
-      const attributableBySource =
-        useCache &&
-        !!cacheEntry &&
-        cacheEntry.result.outputs[format]?.path === outputPath;
-
-      if (!attributableBySource) {
-        console.error(chalk.red("\nOutput path already exists and is not attributable to this source in cache:"));
+      const owner = cacheOwners.get(outputPath);
+      if (owner && owner !== item.relativePath) {
+        console.error(chalk.red("\nOutput path already exists and is owned by a different cached source:"));
+        console.error(
+          chalk.red(`  • ${owner} -> ${outputPath}`)
+        );
         console.error(
           chalk.red(`  • ${item.relativePath} -> ${outputPath}`)
         );
@@ -224,7 +227,7 @@ program
       };
     });
 
-    preflightCollisions(items, options, inputDir, cache, useCache);
+    preflightCollisions(items, options, inputDir, cache);
 
     const manifest: Manifest = {
       version: "1.0",
