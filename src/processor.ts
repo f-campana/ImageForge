@@ -130,8 +130,8 @@ export async function processImage(
   // Keep metadata extraction separate from conversion pipeline and normalize
   // dimensions from EXIF orientation here so manifest width/height match the
   // rotated outputs without depending on pipeline order side effects.
-  const baseWidth = metadata.width ?? 0;
-  const baseHeight = metadata.height ?? 0;
+  const baseWidth = metadata.width;
+  const baseHeight = metadata.height;
   const orientation = metadata.orientation ?? 1;
   const isQuarterTurn = orientation >= 5 && orientation <= 8;
   const width = isQuarterTurn ? baseHeight : baseWidth;
