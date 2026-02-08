@@ -6,12 +6,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/f-campana/ImageForge.git"
+    "url": "git+https://github.com/f-campana/imageforge.git"
   },
   "bugs": {
-    "url": "https://github.com/f-campana/ImageForge/issues"
+    "url": "https://github.com/f-campana/imageforge/issues"
   },
-  "homepage": "https://github.com/f-campana/ImageForge#readme",
+  "homepage": "https://github.com/f-campana/imageforge#readme",
   "packageManager": "pnpm@10.28.2",
   "bin": {
     "imageforge": "./dist/cli.js"

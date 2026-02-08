@@ -15,7 +15,7 @@ Please do not open a public issue.
 
 Use GitHub private security advisories:
 
-- <https://github.com/f-campana/ImageForge/security/advisories/new>
+- <https://github.com/f-campana/imageforge/security/advisories/new>
 
 Include reproduction steps, expected impact, and any proposed mitigations.
 We will acknowledge receipt as soon as possible and provide status updates until resolution.

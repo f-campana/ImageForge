@@ -45,7 +45,7 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Report incidents by contacting the maintainers at
-[security policy channel](https://github.com/f-campana/ImageForge/security/advisories/new).
+[security policy channel](https://github.com/f-campana/imageforge/security/advisories/new).
 All reports will be reviewed and investigated promptly and fairly.
 
 ## Attribution
