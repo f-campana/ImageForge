@@ -148,4 +148,4 @@ imageforge ./public/images --check
 
 ## CI Matrix Note
 
-GitHub Actions runs quality checks on Node 20/22 (Vitest/Vite compatibility) and keeps a separate Node 18 runtime smoke job to validate CLI support for `engines.node >=18`.
+GitHub Actions runs quality checks on Node 22/24 to align with the `engines.node >=22` policy.
