@@ -21,23 +21,9 @@ export interface ProcessOptions {
 }
 
 const LIMIT_INPUT_PIXELS = 100_000_000;
-const IGNORED_DIRS = new Set([
-  ".git",
-  "node_modules",
-  ".next",
-  "dist",
-  "build",
-  ".turbo",
-]);
+const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 
-const IMAGE_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".tiff",
-  ".tif",
-]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".tiff", ".tif"]);
 
 export function isImageFile(filePath: string): boolean {
   return IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
@@ -51,10 +37,7 @@ export function fromPosix(filePath: string): string {
   return filePath.split("/").join(path.sep);
 }
 
-export function outputPathFor(
-  relativePath: string,
-  format: "webp" | "avif"
-): string {
+export function outputPathFor(relativePath: string, format: "webp" | "avif"): string {
   const parsed = path.posix.parse(toPosix(relativePath));
   return path.posix.join(parsed.dir, `${parsed.name}.${format}`);
 }
@@ -98,10 +81,7 @@ export function fileHash(filePath: string, options?: ProcessOptions): string {
   return hash.digest("hex").slice(0, 16);
 }
 
-export async function generateBlurDataURL(
-  buffer: Buffer,
-  size: number = 4
-): Promise<string> {
+export async function generateBlurDataURL(buffer: Buffer, size = 4): Promise<string> {
   const resized = await sharp(buffer, { limitInputPixels: LIMIT_INPUT_PIXELS })
     .rotate()
     .resize(size, size, { fit: "inside" })
@@ -150,9 +130,9 @@ export async function processImage(
   // Keep metadata extraction separate from conversion pipeline and normalize
   // dimensions from EXIF orientation here so manifest width/height match the
   // rotated outputs without depending on pipeline order side effects.
-  const baseWidth = metadata.width || 0;
-  const baseHeight = metadata.height || 0;
-  const orientation = metadata.orientation || 1;
+  const baseWidth = metadata.width ?? 0;
+  const baseHeight = metadata.height ?? 0;
+  const orientation = metadata.orientation ?? 1;
   const isQuarterTurn = orientation >= 5 && orientation <= 8;
   const width = isQuarterTurn ? baseHeight : baseWidth;
   const height = isQuarterTurn ? baseWidth : baseHeight;

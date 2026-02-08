@@ -310,7 +310,13 @@ describe("CLI integration", () => {
     execSync(`node ${CLI} ${cliDir} -o ${manifestPath}`, { encoding: "utf-8" });
 
     expect(fs.existsSync(manifestPath)).toBe(true);
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    const manifestRaw: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+    if (typeof manifestRaw !== "object" || manifestRaw === null || !("images" in manifestRaw)) {
+      throw new Error("Manifest shape is invalid");
+    }
+    const manifest = manifestRaw as {
+      images: Record<string, { outputs: { webp: { path: string } } }>;
+    };
     expect(manifest.images["test.jpg"]).toBeDefined();
     expect(manifest.images["test.jpg"].outputs.webp.path).toBe("test.webp");
   });
@@ -333,10 +339,9 @@ describe("CLI integration", () => {
   });
 
   it("reprocesses when quality changes", () => {
-    const output = execSync(
-      `node ${CLI} ${cliDir} -o ${manifestPath} --quality 60`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`node ${CLI} ${cliDir} -o ${manifestPath} --quality 60`, {
+      encoding: "utf-8",
+    });
 
     expect(output).toContain("1 processed");
     expect(output).not.toContain("0 processed");
@@ -360,10 +365,9 @@ describe("CLI integration", () => {
     );
     expect(first).toContain("1 processed");
     try {
-      execSync(
-        `node ${CLI} ${noCacheDir} --no-cache -o ${path.join(OUTPUT, "no-cache.json")}`,
-        { encoding: "utf-8" }
-      );
+      execSync(`node ${CLI} ${noCacheDir} --no-cache -o ${path.join(OUTPUT, "no-cache.json")}`, {
+        encoding: "utf-8",
+      });
       expect.fail("Expected second --no-cache run to fail without force");
     } catch (err: unknown) {
       const error = err as { status: number; stderr: string };
@@ -428,10 +432,9 @@ describe("CLI integration", () => {
       })
     );
 
-    const output = execSync(
-      `node ${CLI} ${dir} -o ${path.join(OUTPUT, "bad-cache.json")}`,
-      { encoding: "utf-8" }
-    );
+    const output = execSync(`node ${CLI} ${dir} -o ${path.join(OUTPUT, "bad-cache.json")}`, {
+      encoding: "utf-8",
+    });
 
     expect(output).toContain("1 processed");
     fs.rmSync(dir, { recursive: true, force: true });
@@ -465,10 +468,9 @@ describe("CLI integration", () => {
   });
 
   it("--check passes when all processed", () => {
-    const result = execSync(
-      `node ${CLI} ${cliDir} --check -o ${manifestPath}`,
-      { encoding: "utf-8" }
-    );
+    const result = execSync(`node ${CLI} ${cliDir} --check -o ${manifestPath}`, {
+      encoding: "utf-8",
+    });
     expect(result).toContain("All images up to date");
   });
 
@@ -524,10 +526,7 @@ describe("CLI integration", () => {
 
   it("fails fast for invalid --blur-size values", () => {
     try {
-      execSync(
-        `node ${CLI} ${cliDir} -o ${manifestPath} --blur-size -1`,
-        { encoding: "utf-8" }
-      );
+      execSync(`node ${CLI} ${cliDir} -o ${manifestPath} --blur-size -1`, { encoding: "utf-8" });
       expect.fail("Expected invalid blur-size to exit with code 1");
     } catch (err: unknown) {
       const error = err as { status: number; stderr: string };

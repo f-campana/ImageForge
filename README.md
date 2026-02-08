@@ -20,7 +20,11 @@ npm install -g @imageforge/cli
 ```bash
 pnpm install
 pnpm build
+pnpm run typecheck
+pnpm run lint
+pnpm run format:check
 pnpm test
+pnpm run check
 ```
 
 ## Quick Start

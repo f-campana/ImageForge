@@ -11,28 +11,12 @@ import {
   outputPathFor,
   fromPosix,
   toPosix,
-  ProcessOptions,
 } from "./processor";
+import type { ProcessOptions } from "./processor";
+import type { ImageForgeEntry, ImageForgeManifest } from "./types";
 
-const pkg = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8")
-);
-
-interface ManifestEntry {
-  width: number;
-  height: number;
-  aspectRatio: number;
-  blurDataURL: string;
-  originalSize: number;
-  outputs: Record<string, { path: string; size: number }>;
-  hash: string;
-}
-
-interface Manifest {
-  version: string;
-  generated: string;
-  images: Record<string, ManifestEntry>;
-}
+type ManifestEntry = ImageForgeEntry;
+type Manifest = ImageForgeManifest;
 
 interface CacheEntry {
   hash: string;
@@ -48,6 +32,22 @@ interface ImageWorkItem {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+function readPackageVersion(): string {
+  const packageJsonPath = path.join(__dirname, "../package.json");
+  try {
+    const packageJsonContent = fs.readFileSync(packageJsonPath, "utf-8");
+    const parsed: unknown = JSON.parse(packageJsonContent);
+    if (isRecord(parsed) && typeof parsed.version === "string") {
+      return parsed.version;
+    }
+  } catch {
+    // Fall back to a safe default if package metadata cannot be loaded.
+  }
+  return "0.0.0";
+}
+
+const packageVersion = readPackageVersion();
 
 function isOutputRecord(value: unknown): value is { path: string; size: number } {
   return (
@@ -74,19 +74,16 @@ function isManifestEntry(value: unknown): value is ManifestEntry {
 }
 
 function isCacheEntry(value: unknown): value is CacheEntry {
-  return (
-    isRecord(value) &&
-    typeof value.hash === "string" &&
-    isManifestEntry(value.result)
-  );
+  return isRecord(value) && typeof value.hash === "string" && isManifestEntry(value.result);
 }
 
 function loadCache(cachePath: string): Map<string, CacheEntry> {
   try {
     if (fs.existsSync(cachePath)) {
-      const raw = JSON.parse(fs.readFileSync(cachePath, "utf-8"));
+      const cacheContent = fs.readFileSync(cachePath, "utf-8");
+      const raw: unknown = JSON.parse(cacheContent);
       if (!isRecord(raw)) return new Map();
-      const entries: Array<[string, CacheEntry]> = [];
+      const entries: [string, CacheEntry][] = [];
       for (const [key, value] of Object.entries(raw)) {
         if (!isCacheEntry(value)) {
           // Parseable but malformed cache should be treated as corrupt.
@@ -104,14 +101,11 @@ function loadCache(cachePath: string): Map<string, CacheEntry> {
 
 function saveCache(cachePath: string, cache: Map<string, CacheEntry>) {
   fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-  fs.writeFileSync(
-    cachePath,
-    JSON.stringify(Object.fromEntries(cache), null, 2)
-  );
+  fs.writeFileSync(cachePath, JSON.stringify(Object.fromEntries(cache), null, 2));
 }
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024) return `${bytes.toString()}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
@@ -148,15 +142,9 @@ function preflightCollisions(
 
       if (existingSource && existingSource !== item.relativePath) {
         console.error(chalk.red("\nOutput collision detected:"));
-        console.error(
-          chalk.red(`  • ${existingSource} -> ${outputPath}`)
-        );
-        console.error(
-          chalk.red(`  • ${item.relativePath} -> ${outputPath}`)
-        );
-        console.error(
-          chalk.yellow("Fix: rename one source file. In v0.2.0, use --out-dir.")
-        );
+        console.error(chalk.red(`  • ${existingSource} -> ${outputPath}`));
+        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
+        console.error(chalk.yellow("Fix: rename one source file. In v0.2.0, use --out-dir."));
         process.exit(1);
       }
 
@@ -167,9 +155,7 @@ function preflightCollisions(
       if (forceOverwrite) continue;
       if (!useCache) {
         console.error(chalk.red("\nOutput path already exists and --no-cache is enabled:"));
-        console.error(
-          chalk.red(`  • ${item.relativePath} -> ${outputPath}`)
-        );
+        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
         console.error(
           chalk.yellow("Fix: remove existing outputs or rerun with --force-overwrite.")
         );
@@ -178,24 +164,22 @@ function preflightCollisions(
       const owner = cacheOwners.get(outputPath);
       if (!owner) {
         console.error(chalk.red("\nOutput path already exists and is not cache-owned:"));
-        console.error(
-          chalk.red(`  • ${item.relativePath} -> ${outputPath}`)
-        );
+        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
         console.error(
           chalk.yellow("Fix: remove or rename the existing output, or use --out-dir in v0.2.0.")
         );
         process.exit(1);
       }
       if (owner !== item.relativePath) {
-        console.error(chalk.red("\nOutput path already exists and is owned by a different cached source:"));
         console.error(
-          chalk.red(`  • ${owner} -> ${outputPath}`)
+          chalk.red("\nOutput path already exists and is owned by a different cached source:")
         );
+        console.error(chalk.red(`  • ${owner} -> ${outputPath}`));
+        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
         console.error(
-          chalk.red(`  • ${item.relativePath} -> ${outputPath}`)
-        );
-        console.error(
-          chalk.yellow("Fix: rename the source file, remove conflicting output, or use --out-dir in v0.2.0.")
+          chalk.yellow(
+            "Fix: rename the source file, remove conflicting output, or use --out-dir in v0.2.0."
+          )
         );
         process.exit(1);
       }
@@ -203,29 +187,36 @@ function preflightCollisions(
   }
 }
 
+interface CliOptions {
+  output: string;
+  formats: string;
+  quality: string;
+  blur: boolean;
+  blurSize: string;
+  cache: boolean;
+  forceOverwrite: boolean;
+  check: boolean;
+}
+
 const program = new Command();
 
 program
   .name("imageforge")
   .description("Image optimization pipeline for Next.js developers")
-  .version(pkg.version)
+  .version(packageVersion)
   .argument("<directory>", "Directory containing images to process")
   .option("-o, --output <path>", "Manifest output path", "imageforge.json")
-  .option(
-    "-f, --formats <formats>",
-    "Output formats (comma-separated: webp,avif)",
-    "webp"
-  )
+  .option("-f, --formats <formats>", "Output formats (comma-separated: webp,avif)", "webp")
   .option("-q, --quality <number>", "Output quality (1-100)", "80")
   .option("--no-blur", "Skip blur placeholder generation")
   .option("--blur-size <number>", "Blur placeholder dimensions", "4")
   .option("--no-cache", "Disable file hash caching")
   .option("--force-overwrite", "Allow overwriting existing output files")
   .option("--check", "Check mode: exit 1 if unprocessed images exist")
-  .action(async (directory: string, opts: Record<string, unknown>) => {
-    const inputDir = path.resolve(directory as string);
-    const outputPath = path.resolve(opts.output as string);
-    const qualityRaw = parseInt(opts.quality as string, 10);
+  .action(async (directory: string, opts: CliOptions) => {
+    const inputDir = path.resolve(directory);
+    const outputPath = path.resolve(opts.output);
+    const qualityRaw = parseInt(opts.quality, 10);
     if (isNaN(qualityRaw) || qualityRaw < 1 || qualityRaw > 100) {
       console.error(
         chalk.red(`Invalid quality: "${opts.quality}". Must be a number between 1 and 100.`)
@@ -233,7 +224,7 @@ program
       process.exit(1);
     }
     const quality = qualityRaw;
-    const formatParts = (opts.formats as string)
+    const formatParts = opts.formats
       .split(",")
       .map((f) => f.trim().toLowerCase())
       .filter(Boolean);
@@ -244,11 +235,9 @@ program
         chalk.yellow(`Unknown format(s) ignored: ${unknownFormats.join(", ")}. Valid: webp, avif`)
       );
     }
-    const formats = formatParts.filter(
-      (f): f is "webp" | "avif" => f === "webp" || f === "avif"
-    );
-    const blur = opts.blur !== false;
-    const blurSizeRaw = parseInt(opts.blurSize as string, 10);
+    const formats = formatParts.filter((f): f is "webp" | "avif" => f === "webp" || f === "avif");
+    const blur = opts.blur;
+    const blurSizeRaw = parseInt(opts.blurSize, 10);
     if (isNaN(blurSizeRaw) || blurSizeRaw < 1 || blurSizeRaw > 256) {
       console.error(
         chalk.red(`Invalid blur size: "${opts.blurSize}". Must be an integer between 1 and 256.`)
@@ -256,9 +245,9 @@ program
       process.exit(1);
     }
     const blurSize = blurSizeRaw;
-    const useCache = opts.cache !== false;
-    const forceOverwrite = opts.forceOverwrite === true;
-    const checkMode = opts.check === true;
+    const useCache = opts.cache;
+    const forceOverwrite = opts.forceOverwrite;
+    const checkMode = opts.check;
 
     // Validate input
     if (!fs.existsSync(inputDir)) {
@@ -280,9 +269,7 @@ program
       process.exit(0);
     }
 
-    console.log(
-      chalk.bold(`\nimageforge v${pkg.version}\n`)
-    );
+    console.log(chalk.bold(`\nimageforge v${packageVersion}\n`));
     console.log(
       `Processing ${chalk.cyan(images.length.toString())} images in ${chalk.dim(inputDir)}`
     );
@@ -324,12 +311,7 @@ program
 
       // Check cache
       const cacheEntry = cache.get(relativePath);
-      if (
-        useCache &&
-        cacheEntry &&
-        cacheEntry.hash === hash &&
-        cacheOutputsExist(cacheEntry, inputDir)
-      ) {
+      if (useCache && cacheEntry?.hash === hash && cacheOutputsExist(cacheEntry, inputDir)) {
         manifest.images[relativePath] = cacheEntry.result;
         cached++;
         totalOriginal += cacheEntry.result.originalSize;
@@ -368,13 +350,11 @@ program
         const outputSummary = Object.entries(result.outputs)
           .map(([fmt, out]) => {
             totalProcessed += out.size;
-            const saving = Math.round(
-              (1 - out.size / result.originalSize) * 100
-            );
+            const saving = Math.round((1 - out.size / result.originalSize) * 100);
             const savingLabel =
               saving >= 0
-                ? chalk.green(`-${saving}%`)
-                : chalk.yellow(`+${Math.abs(saving)}%`);
+                ? chalk.green(`-${saving.toString()}%`)
+                : chalk.yellow(`+${Math.abs(saving).toString()}%`);
             return `${fmt} (${formatSize(result.originalSize)} → ${formatSize(out.size)}, ${savingLabel})`;
           })
           .join(", ");
@@ -391,7 +371,7 @@ program
     if (checkMode) {
       if (failed > 0) {
         console.log(
-          chalk.red(`\n${failed} image(s) need processing. Run: imageforge ${directory}`)
+          chalk.red(`\n${failed.toString()} image(s) need processing. Run: imageforge ${directory}`)
         );
         process.exit(1);
       } else {
@@ -412,18 +392,14 @@ program
     // Summary
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     const totalSaving =
-      totalOriginal > 0
-        ? Math.round((1 - totalProcessed / totalOriginal) * 100)
-        : 0;
+      totalOriginal > 0 ? Math.round((1 - totalProcessed / totalOriginal) * 100) : 0;
     const totalSavingLabel =
       totalSaving >= 0
-        ? chalk.green(`-${totalSaving}%`)
-        : chalk.yellow(`+${Math.abs(totalSaving)}%`);
+        ? chalk.green(`-${totalSaving.toString()}%`)
+        : chalk.yellow(`+${Math.abs(totalSaving).toString()}%`);
 
     console.log(chalk.dim("\n" + "─".repeat(50)));
-    console.log(
-      `\nDone in ${chalk.bold(duration + "s")}`
-    );
+    console.log(`\nDone in ${chalk.bold(duration + "s")}`);
     console.log(
       `  ${chalk.green(processed.toString())} processed, ${chalk.dim(cached.toString())} cached${failed > 0 ? `, ${chalk.red(failed.toString())} failed` : ""}`
     );
