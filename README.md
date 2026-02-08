@@ -27,6 +27,18 @@ pnpm test
 pnpm run check
 ```
 
+## Open Source Workflow
+
+- Conventional Commit messages are required for commits and PR titles.
+- Releases and `CHANGELOG.md` updates are automated via Release Please.
+- Tags follow annotated SemVer with a `v` prefix (for example `v0.1.1`).
+
+See:
+
+- [CONTRIBUTING](./CONTRIBUTING.md)
+- [SECURITY](./SECURITY.md)
+- [CODE_OF_CONDUCT](./CODE_OF_CONDUCT.md)
+
 ## Release Verify
 
 Run the pre-release gate locally before publishing:
