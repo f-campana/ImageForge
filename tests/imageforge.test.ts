@@ -21,6 +21,9 @@ const ROOT = path.join(__dirname, "..");
 const FIXTURES = path.join(__dirname, "fixtures");
 const OUTPUT = path.join(__dirname, "test-output");
 const CLI = path.join(ROOT, "dist", "cli.js");
+const PACKAGE_VERSION = (
+  JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8")) as { version: string }
+).version;
 
 interface CliRunResult {
   status: number;
@@ -525,7 +528,7 @@ describe("CLI integration", () => {
     const result = runCli([cliDir, "-o", manifestPath]);
     expect(result.status).toBe(0);
     expect(fs.existsSync(manifestPath)).toBe(true);
-    expect(result.stdout).toContain("imageforge v0.1.0");
+    expect(result.stdout).toContain(`imageforge v${PACKAGE_VERSION}`);
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as {
       version: string;
@@ -960,7 +963,7 @@ describe("CLI integration", () => {
   it("prints version with --version", () => {
     const result = runCli(["--version"]);
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^0\.1\.0$/);
+    expect(result.stdout.trim()).toBe(PACKAGE_VERSION);
   });
 
   it("fails fast for invalid --blur-size values", () => {
@@ -1123,7 +1126,7 @@ describe("config support", () => {
     const outputManifest = path.join(configDir, "override-no-json.json");
     const result = runCli([".", "--no-json", "--output", outputManifest], configDir);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("imageforge v0.1.0");
+    expect(result.stdout).toContain(`imageforge v${PACKAGE_VERSION}`);
   });
 
   it("fails fast on unknown config keys", () => {
