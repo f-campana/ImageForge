@@ -796,6 +796,23 @@ describe("CLI integration", () => {
     expect(quiet.stdout).not.toContain("[1/1]");
   });
 
+  it("rejects --verbose with --quiet together", async () => {
+    const dir = path.join(cliDir, "verbosity-conflict");
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    await createJpeg(path.join(dir, "one.jpg"), 20, 20, { r: 1, g: 1, b: 1 });
+
+    const result = runCli([
+      dir,
+      "--verbose",
+      "--quiet",
+      "-o",
+      path.join(OUTPUT, "verbosity-conflict.json"),
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("--verbose and --quiet cannot be used together");
+  });
+
   it("processes with configurable concurrency", async () => {
     const dir = path.join(cliDir, "concurrency");
     fs.rmSync(dir, { recursive: true, force: true });

@@ -189,6 +189,10 @@ function resolveOptions(
     resolved.quiet = options.quiet;
   }
 
+  if (verboseFromCli && quietFromCli) {
+    throw new Error("--verbose and --quiet cannot be used together.");
+  }
+
   // Explicit CLI verbosity choice should override config-derived opposite mode.
   if (verboseFromCli && resolved.verbose) {
     resolved.quiet = false;
