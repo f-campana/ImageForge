@@ -1,32 +1,44 @@
 #!/usr/bin/env node
 
-import { Command } from "commander";
 import chalk from "chalk";
+import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
-import {
-  discoverImages,
-  processImage,
-  fileHash,
-  outputPathFor,
-  fromPosix,
-  toPosix,
-} from "./processor";
-import type { ProcessOptions } from "./processor";
-import type { ImageForgeEntry, ImageForgeManifest } from "./types";
+import { ConfigError, loadConfig, type ImageForgeConfig } from "./config";
+import type { OutputFormat } from "./processor";
+import { getDefaultConcurrency, runImageforge } from "./runner";
 
-type ManifestEntry = ImageForgeEntry;
-type Manifest = ImageForgeManifest;
-
-interface CacheEntry {
-  hash: string;
-  result: ManifestEntry;
+interface CliOptions {
+  output?: string;
+  formats?: string;
+  quality?: string;
+  blur?: boolean;
+  blurSize?: string;
+  cache?: boolean;
+  forceOverwrite?: boolean;
+  check?: boolean;
+  outDir?: string;
+  concurrency?: string;
+  json?: boolean;
+  verbose?: boolean;
+  quiet?: boolean;
+  config?: string;
 }
 
-interface ImageWorkItem {
-  imagePath: string;
-  relativePath: string;
-  hash: string;
+interface ResolvedOptions {
+  output: string;
+  formatsInput: string[];
+  quality: number;
+  blur: boolean;
+  blurSize: number;
+  cache: boolean;
+  forceOverwrite: boolean;
+  check: boolean;
+  outDir: string | null;
+  concurrency: number;
+  json: boolean;
+  verbose: boolean;
+  quiet: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,369 +59,238 @@ function readPackageVersion(): string {
   return "0.0.0";
 }
 
-const packageVersion = readPackageVersion();
+function parseNumberOption(label: string, rawValue: unknown): number {
+  if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+    throw new Error(`Invalid ${label}: expected a finite number.`);
+  }
+  if (!Number.isInteger(rawValue)) {
+    throw new Error(`Invalid ${label}: must be an integer.`);
+  }
+  return rawValue;
+}
 
-function isOutputRecord(value: unknown): value is { path: string; size: number } {
-  return (
-    isRecord(value) &&
-    typeof value.path === "string" &&
-    typeof value.size === "number" &&
-    Number.isFinite(value.size)
+function parseIntegerFromString(label: string, rawValue: string): number {
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid ${label}: "${rawValue}" is not a number.`);
+  }
+  return parsed;
+}
+
+function parseFormatsInput(value: string | string[]): string[] {
+  const parts = Array.isArray(value) ? value : [value];
+  return parts
+    .flatMap((entry) => entry.split(","))
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function normalizeFormats(
+  formatsInput: string[],
+  jsonMode: boolean
+): { formats: OutputFormat[]; unknown: string[] } {
+  const valid = new Set(["webp", "avif"]);
+  const unknown = formatsInput.filter((format) => !valid.has(format));
+  if (unknown.length > 0 && !jsonMode) {
+    console.error(
+      chalk.yellow(`Unknown format(s) ignored: ${unknown.join(", ")}. Valid: webp, avif`)
+    );
+  }
+  const formats = formatsInput.filter(
+    (format): format is OutputFormat => format === "webp" || format === "avif"
   );
+  return { formats, unknown };
 }
 
-function isManifestEntry(value: unknown): value is ManifestEntry {
-  if (!isRecord(value)) return false;
-  if (typeof value.width !== "number" || !Number.isFinite(value.width)) return false;
-  if (typeof value.height !== "number" || !Number.isFinite(value.height)) return false;
-  if (typeof value.aspectRatio !== "number" || !Number.isFinite(value.aspectRatio)) return false;
-  if (typeof value.blurDataURL !== "string") return false;
-  if (typeof value.originalSize !== "number" || !Number.isFinite(value.originalSize)) return false;
-  if (typeof value.hash !== "string") return false;
-  if (!isRecord(value.outputs)) return false;
-  for (const output of Object.values(value.outputs)) {
-    if (!isOutputRecord(output)) return false;
+function applyConfig(target: ResolvedOptions, config: ImageForgeConfig) {
+  if (config.output !== undefined) target.output = config.output;
+  if (config.formats !== undefined) target.formatsInput = parseFormatsInput(config.formats);
+  if (config.quality !== undefined) target.quality = parseNumberOption("quality", config.quality);
+  if (config.blur !== undefined) target.blur = config.blur;
+  if (config.blurSize !== undefined)
+    target.blurSize = parseNumberOption("blurSize", config.blurSize);
+  if (config.cache !== undefined) target.cache = config.cache;
+  if (config.forceOverwrite !== undefined) target.forceOverwrite = config.forceOverwrite;
+  if (config.check !== undefined) target.check = config.check;
+  if (config.outDir !== undefined) target.outDir = config.outDir;
+  if (config.concurrency !== undefined)
+    target.concurrency = parseNumberOption("concurrency", config.concurrency);
+  if (config.json !== undefined) target.json = config.json;
+  if (config.verbose !== undefined) target.verbose = config.verbose;
+  if (config.quiet !== undefined) target.quiet = config.quiet;
+}
+
+function resolveOptions(
+  options: CliOptions,
+  command: Command,
+  config: ImageForgeConfig,
+  defaultConcurrency: number
+): { resolved: ResolvedOptions; formats: OutputFormat[] } {
+  const resolved: ResolvedOptions = {
+    output: "imageforge.json",
+    formatsInput: ["webp"],
+    quality: 80,
+    blur: true,
+    blurSize: 4,
+    cache: true,
+    forceOverwrite: false,
+    check: false,
+    outDir: null,
+    concurrency: defaultConcurrency,
+    json: false,
+    verbose: false,
+    quiet: false,
+  };
+
+  applyConfig(resolved, config);
+
+  if (command.getOptionValueSource("output") === "cli" && options.output !== undefined) {
+    resolved.output = options.output;
   }
-  return true;
-}
-
-function isCacheEntry(value: unknown): value is CacheEntry {
-  return isRecord(value) && typeof value.hash === "string" && isManifestEntry(value.result);
-}
-
-function loadCache(cachePath: string): Map<string, CacheEntry> {
-  try {
-    if (fs.existsSync(cachePath)) {
-      const cacheContent = fs.readFileSync(cachePath, "utf-8");
-      const raw: unknown = JSON.parse(cacheContent);
-      if (!isRecord(raw)) return new Map();
-      const entries: [string, CacheEntry][] = [];
-      for (const [key, value] of Object.entries(raw)) {
-        if (!isCacheEntry(value)) {
-          // Parseable but malformed cache should be treated as corrupt.
-          return new Map();
-        }
-        entries.push([key, value]);
-      }
-      return new Map(entries);
-    }
-  } catch {
-    // Corrupt cache — start fresh
+  if (command.getOptionValueSource("formats") === "cli" && options.formats !== undefined) {
+    resolved.formatsInput = parseFormatsInput(options.formats);
   }
-  return new Map();
-}
-
-function saveCache(cachePath: string, cache: Map<string, CacheEntry>) {
-  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-  fs.writeFileSync(cachePath, JSON.stringify(Object.fromEntries(cache), null, 2));
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes.toString()}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function cacheOutputsExist(entry: CacheEntry, inputDir: string): boolean {
-  for (const output of Object.values(entry.result.outputs)) {
-    const fullPath = path.resolve(inputDir, fromPosix(output.path));
-    if (!fs.existsSync(fullPath)) return false;
+  if (command.getOptionValueSource("quality") === "cli" && options.quality !== undefined) {
+    resolved.quality = parseIntegerFromString("quality", options.quality);
   }
-  return true;
-}
-
-function preflightCollisions(
-  items: ImageWorkItem[],
-  options: ProcessOptions,
-  inputDir: string,
-  cache: Map<string, CacheEntry>,
-  useCache: boolean,
-  forceOverwrite: boolean
-) {
-  const planned = new Map<string, string>();
-  const cacheOwners = new Map<string, string>();
-
-  for (const [source, entry] of cache.entries()) {
-    for (const output of Object.values(entry.result.outputs)) {
-      cacheOwners.set(output.path, source);
-    }
+  if (command.getOptionValueSource("blur") === "cli" && options.blur !== undefined) {
+    resolved.blur = options.blur;
+  }
+  if (command.getOptionValueSource("blurSize") === "cli" && options.blurSize !== undefined) {
+    resolved.blurSize = parseIntegerFromString("blur size", options.blurSize);
+  }
+  if (command.getOptionValueSource("cache") === "cli" && options.cache !== undefined) {
+    resolved.cache = options.cache;
+  }
+  if (
+    command.getOptionValueSource("forceOverwrite") === "cli" &&
+    options.forceOverwrite !== undefined
+  ) {
+    resolved.forceOverwrite = options.forceOverwrite;
+  }
+  if (command.getOptionValueSource("check") === "cli" && options.check !== undefined) {
+    resolved.check = options.check;
+  }
+  if (command.getOptionValueSource("outDir") === "cli") {
+    resolved.outDir = options.outDir ?? null;
+  }
+  if (command.getOptionValueSource("concurrency") === "cli" && options.concurrency !== undefined) {
+    resolved.concurrency = parseIntegerFromString("concurrency", options.concurrency);
+  }
+  if (command.getOptionValueSource("json") === "cli" && options.json !== undefined) {
+    resolved.json = options.json;
+  }
+  if (command.getOptionValueSource("verbose") === "cli" && options.verbose !== undefined) {
+    resolved.verbose = options.verbose;
+  }
+  if (command.getOptionValueSource("quiet") === "cli" && options.quiet !== undefined) {
+    resolved.quiet = options.quiet;
   }
 
-  for (const item of items) {
-    for (const format of options.formats) {
-      const outputPath = outputPathFor(item.relativePath, format);
-      const existingSource = planned.get(outputPath);
-
-      if (existingSource && existingSource !== item.relativePath) {
-        console.error(chalk.red("\nOutput collision detected:"));
-        console.error(chalk.red(`  • ${existingSource} -> ${outputPath}`));
-        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
-        console.error(chalk.yellow("Fix: rename one source file. In v0.2.0, use --out-dir."));
-        process.exit(1);
-      }
-
-      planned.set(outputPath, item.relativePath);
-
-      const fullOutputPath = path.resolve(inputDir, fromPosix(outputPath));
-      if (!fs.existsSync(fullOutputPath)) continue;
-      if (forceOverwrite) continue;
-      if (!useCache) {
-        console.error(chalk.red("\nOutput path already exists and --no-cache is enabled:"));
-        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
-        console.error(
-          chalk.yellow("Fix: remove existing outputs or rerun with --force-overwrite.")
-        );
-        process.exit(1);
-      }
-      const owner = cacheOwners.get(outputPath);
-      if (!owner) {
-        console.error(chalk.red("\nOutput path already exists and is not cache-owned:"));
-        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
-        console.error(
-          chalk.yellow("Fix: remove or rename the existing output, or use --out-dir in v0.2.0.")
-        );
-        process.exit(1);
-      }
-      if (owner !== item.relativePath) {
-        console.error(
-          chalk.red("\nOutput path already exists and is owned by a different cached source:")
-        );
-        console.error(chalk.red(`  • ${owner} -> ${outputPath}`));
-        console.error(chalk.red(`  • ${item.relativePath} -> ${outputPath}`));
-        console.error(
-          chalk.yellow(
-            "Fix: rename the source file, remove conflicting output, or use --out-dir in v0.2.0."
-          )
-        );
-        process.exit(1);
-      }
-    }
+  if (resolved.quality < 1 || resolved.quality > 100) {
+    throw new Error(
+      `Invalid quality: "${resolved.quality.toString()}". Must be between 1 and 100.`
+    );
   }
-}
 
-interface CliOptions {
-  output: string;
-  formats: string;
-  quality: string;
-  blur: boolean;
-  blurSize: string;
-  cache: boolean;
-  forceOverwrite: boolean;
-  check: boolean;
+  if (resolved.blurSize < 1 || resolved.blurSize > 256) {
+    throw new Error(
+      `Invalid blur size: "${resolved.blurSize.toString()}". Must be between 1 and 256.`
+    );
+  }
+
+  if (resolved.concurrency < 1 || resolved.concurrency > 64) {
+    throw new Error(
+      `Invalid concurrency: "${resolved.concurrency.toString()}". Must be between 1 and 64.`
+    );
+  }
+
+  if (resolved.verbose && resolved.quiet) {
+    throw new Error("--verbose and --quiet cannot be used together.");
+  }
+
+  const { formats } = normalizeFormats(resolved.formatsInput, resolved.json);
+  if (formats.length === 0) {
+    throw new Error("No valid formats specified. Use: webp, avif");
+  }
+
+  return {
+    resolved,
+    formats,
+  };
 }
 
 const program = new Command();
+const packageVersion = readPackageVersion();
 
 program
   .name("imageforge")
   .description("Image optimization pipeline for Next.js developers")
   .version(packageVersion)
   .argument("<directory>", "Directory containing images to process")
-  .option("-o, --output <path>", "Manifest output path", "imageforge.json")
-  .option("-f, --formats <formats>", "Output formats (comma-separated: webp,avif)", "webp")
-  .option("-q, --quality <number>", "Output quality (1-100)", "80")
+  .option("-o, --output <path>", "Manifest output path (default: imageforge.json)")
+  .option("-f, --formats <formats>", "Output formats (comma-separated: webp,avif)")
+  .option("-q, --quality <number>", "Output quality 1..100 (default: 80)")
   .option("--no-blur", "Skip blur placeholder generation")
-  .option("--blur-size <number>", "Blur placeholder dimensions", "4")
+  .option("--blur-size <number>", "Blur placeholder dimensions 1..256 (default: 4)")
   .option("--no-cache", "Disable file hash caching")
   .option("--force-overwrite", "Allow overwriting existing output files")
   .option("--check", "Check mode: exit 1 if unprocessed images exist")
-  .action(async (directory: string, opts: CliOptions) => {
-    const inputDir = path.resolve(directory);
-    const outputPath = path.resolve(opts.output);
-    const qualityRaw = parseInt(opts.quality, 10);
-    if (isNaN(qualityRaw) || qualityRaw < 1 || qualityRaw > 100) {
-      console.error(
-        chalk.red(`Invalid quality: "${opts.quality}". Must be a number between 1 and 100.`)
+  .option("--out-dir <path>", "Output directory for generated derivatives")
+  .option(
+    "--concurrency <number>",
+    `Number of images to process concurrently (default: ${getDefaultConcurrency().toString()})`
+  )
+  .option("--json", "Emit machine-readable JSON report to stdout")
+  .option("--verbose", "Show additional diagnostics")
+  .option("--quiet", "Suppress per-file logs")
+  .option("--config <path>", "Path to imageforge config file")
+  .action(async (directory: string, options: CliOptions, command: Command) => {
+    try {
+      const configPath =
+        command.getOptionValueSource("config") === "cli" && options.config
+          ? options.config
+          : undefined;
+      const loadedConfig = loadConfig(process.cwd(), configPath);
+
+      const { resolved, formats } = resolveOptions(
+        options,
+        command,
+        loadedConfig.config,
+        getDefaultConcurrency()
       );
-      process.exit(1);
-    }
-    const quality = qualityRaw;
-    const formatParts = opts.formats
-      .split(",")
-      .map((f) => f.trim().toLowerCase())
-      .filter(Boolean);
-    const validFormats = new Set(["webp", "avif"]);
-    const unknownFormats = formatParts.filter((f) => !validFormats.has(f));
-    if (unknownFormats.length > 0) {
-      console.error(
-        chalk.yellow(`Unknown format(s) ignored: ${unknownFormats.join(", ")}. Valid: webp, avif`)
-      );
-    }
-    const formats = formatParts.filter((f): f is "webp" | "avif" => f === "webp" || f === "avif");
-    const blur = opts.blur;
-    const blurSizeRaw = parseInt(opts.blurSize, 10);
-    if (isNaN(blurSizeRaw) || blurSizeRaw < 1 || blurSizeRaw > 256) {
-      console.error(
-        chalk.red(`Invalid blur size: "${opts.blurSize}". Must be an integer between 1 and 256.`)
-      );
-      process.exit(1);
-    }
-    const blurSize = blurSizeRaw;
-    const useCache = opts.cache;
-    const forceOverwrite = opts.forceOverwrite;
-    const checkMode = opts.check;
 
-    // Validate input
-    if (!fs.existsSync(inputDir)) {
-      console.error(chalk.red(`Directory not found: ${inputDir}`));
-      process.exit(1);
-    }
+      const result = await runImageforge({
+        inputDir: directory,
+        outputPath: resolved.output,
+        directoryArg: directory,
+        commandName: "imageforge",
+        formats,
+        quality: resolved.quality,
+        blur: resolved.blur,
+        blurSize: resolved.blurSize,
+        useCache: resolved.cache,
+        forceOverwrite: resolved.forceOverwrite,
+        checkMode: resolved.check,
+        outDir: resolved.outDir,
+        concurrency: resolved.concurrency,
+        json: resolved.json,
+        verbose: resolved.verbose,
+        quiet: resolved.quiet,
+      });
 
-    if (formats.length === 0) {
-      console.error(chalk.red("No valid formats specified. Use: webp, avif"));
-      process.exit(1);
-    }
-
-    const options: ProcessOptions = { formats, quality, blur, blurSize };
-
-    // Discover images
-    const images = discoverImages(inputDir);
-    if (images.length === 0) {
-      console.log(chalk.yellow("No images found in " + inputDir));
-      process.exit(0);
-    }
-
-    console.log(chalk.bold(`\nimageforge v${packageVersion}\n`));
-    console.log(
-      `Processing ${chalk.cyan(images.length.toString())} images in ${chalk.dim(inputDir)}`
-    );
-    console.log(
-      `Formats: ${formats.map((f) => chalk.cyan(f)).join(", ")}  Quality: ${chalk.cyan(quality.toString())}  Blur: ${blur ? chalk.green("yes") : chalk.dim("no")}\n`
-    );
-
-    // Load cache
-    const cachePath = path.join(inputDir, ".imageforge-cache.json");
-    const cache = useCache ? loadCache(cachePath) : new Map<string, CacheEntry>();
-    const writableCache = cache;
-
-    const items: ImageWorkItem[] = images.map((imagePath) => {
-      const relativePath = toPosix(path.relative(inputDir, imagePath));
-      return {
-        imagePath,
-        relativePath,
-        hash: fileHash(imagePath, options),
-      };
-    });
-
-    preflightCollisions(items, options, inputDir, cache, useCache, forceOverwrite);
-
-    const manifest: Manifest = {
-      version: "1.0",
-      generated: new Date().toISOString(),
-      images: {},
-    };
-
-    let processed = 0;
-    let cached = 0;
-    let failed = 0;
-    let totalOriginal = 0;
-    let totalProcessed = 0;
-    const startTime = Date.now();
-
-    for (const item of items) {
-      const { imagePath, relativePath, hash } = item;
-
-      // Check cache
-      const cacheEntry = cache.get(relativePath);
-      if (useCache && cacheEntry?.hash === hash && cacheOutputsExist(cacheEntry, inputDir)) {
-        manifest.images[relativePath] = cacheEntry.result;
-        cached++;
-        totalOriginal += cacheEntry.result.originalSize;
-        for (const out of Object.values(cacheEntry.result.outputs)) {
-          totalProcessed += out.size;
-        }
-        console.log(`  ${chalk.dim("○")} ${chalk.dim(relativePath)} ${chalk.dim("(cached)")}`);
-        continue;
+      if (resolved.json) {
+        console.log(JSON.stringify(result.report, null, 2));
       }
 
-      // Check mode: if we get here, something needs processing
-      if (checkMode) {
-        console.log(`  ${chalk.red("✗")} ${relativePath} ${chalk.red("(needs processing)")}`);
-        failed++;
-        continue;
-      }
-
-      try {
-        const result = await processImage(imagePath, inputDir, options);
-
-        const entry: ManifestEntry = {
-          width: result.width,
-          height: result.height,
-          aspectRatio: result.aspectRatio,
-          blurDataURL: result.blurDataURL,
-          originalSize: result.originalSize,
-          outputs: result.outputs,
-          hash,
-        };
-
-        manifest.images[relativePath] = entry;
-        writableCache.set(relativePath, { hash, result: entry });
-        processed++;
-        totalOriginal += result.originalSize;
-
-        const outputSummary = Object.entries(result.outputs)
-          .map(([fmt, out]) => {
-            totalProcessed += out.size;
-            const saving = Math.round((1 - out.size / result.originalSize) * 100);
-            const savingLabel =
-              saving >= 0
-                ? chalk.green(`-${saving.toString()}%`)
-                : chalk.yellow(`+${Math.abs(saving).toString()}%`);
-            return `${fmt} (${formatSize(result.originalSize)} → ${formatSize(out.size)}, ${savingLabel})`;
-          })
-          .join(", ");
-
-        console.log(`  ${chalk.green("✓")} ${relativePath} → ${outputSummary}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "unknown error";
-        console.log(`  ${chalk.red("✗")} ${relativePath} — ${chalk.red(msg)}`);
-        failed++;
-      }
-    }
-
-    // Check mode: exit with appropriate code
-    if (checkMode) {
-      if (failed > 0) {
-        console.log(
-          chalk.red(`\n${failed.toString()} image(s) need processing. Run: imageforge ${directory}`)
-        );
-        process.exit(1);
+      process.exitCode = result.exitCode;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      if (err instanceof ConfigError) {
+        console.error(chalk.red(message));
       } else {
-        console.log(chalk.green("\nAll images up to date."));
-        process.exit(0);
+        console.error(chalk.red(`imageforge failed: ${message}`));
       }
-    }
-
-    // Save cache
-    if (useCache) {
-      saveCache(cachePath, writableCache);
-    }
-
-    // Write manifest
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
-
-    // Summary
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    const totalSaving =
-      totalOriginal > 0 ? Math.round((1 - totalProcessed / totalOriginal) * 100) : 0;
-    const totalSavingLabel =
-      totalSaving >= 0
-        ? chalk.green(`-${totalSaving.toString()}%`)
-        : chalk.yellow(`+${Math.abs(totalSaving).toString()}%`);
-
-    console.log(chalk.dim("\n" + "─".repeat(50)));
-    console.log(`\nDone in ${chalk.bold(duration + "s")}`);
-    console.log(
-      `  ${chalk.green(processed.toString())} processed, ${chalk.dim(cached.toString())} cached${failed > 0 ? `, ${chalk.red(failed.toString())} failed` : ""}`
-    );
-    if (totalOriginal > 0) {
-      console.log(
-        `  Total: ${formatSize(totalOriginal)} → ${formatSize(totalProcessed)} (${totalSavingLabel})`
-      );
-    }
-    console.log(`  Manifest: ${chalk.cyan(path.relative(process.cwd(), outputPath))}\n`);
-    if (failed > 0) {
       process.exitCode = 1;
     }
   });

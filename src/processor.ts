@@ -3,6 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 
+export type OutputFormat = "webp" | "avif";
+
 export interface ImageResult {
   file: string;
   width: number;
@@ -14,7 +16,7 @@ export interface ImageResult {
 }
 
 export interface ProcessOptions {
-  formats: ("webp" | "avif")[];
+  formats: OutputFormat[];
   quality: number;
   blur: boolean;
   blurSize: number;
@@ -30,14 +32,14 @@ export function isImageFile(filePath: string): boolean {
 }
 
 export function toPosix(filePath: string): string {
-  return filePath.split(path.sep).join("/");
+  return filePath.replace(/\\/g, "/").split(path.sep).join("/");
 }
 
 export function fromPosix(filePath: string): string {
   return filePath.split("/").join(path.sep);
 }
 
-export function outputPathFor(relativePath: string, format: "webp" | "avif"): string {
+export function outputPathFor(relativePath: string, format: OutputFormat): string {
   const parsed = path.posix.parse(toPosix(relativePath));
   return path.posix.join(parsed.dir, `${parsed.name}.${format}`);
 }
@@ -93,7 +95,7 @@ export async function generateBlurDataURL(buffer: Buffer, size = 4): Promise<str
 
 export async function convertImage(
   buffer: Buffer,
-  format: "webp" | "avif",
+  format: OutputFormat,
   quality: number
 ): Promise<Buffer> {
   let pipeline = sharp(buffer, { limitInputPixels: LIMIT_INPUT_PIXELS }).rotate();
@@ -119,7 +121,8 @@ export async function convertImage(
 export async function processImage(
   filePath: string,
   inputDir: string,
-  options: ProcessOptions
+  options: ProcessOptions,
+  outputDir = inputDir
 ): Promise<ImageResult> {
   const buffer = fs.readFileSync(filePath);
   const metadata = await sharp(buffer, {
@@ -155,15 +158,16 @@ export async function processImage(
   // Convert to output formats
   for (const format of options.formats) {
     const outputBuffer = await convertImage(buffer, format, options.quality);
-    const outputRelPath = outputPathFor(relativePath, format);
+    const outputInOutputDir = outputPathFor(relativePath, format);
+    const outputFullPath = path.resolve(outputDir, fromPosix(outputInOutputDir));
+    const outputRelPath = toPosix(path.relative(inputDir, outputFullPath));
 
     result.outputs[format] = {
       path: outputRelPath,
       size: outputBuffer.length,
     };
 
-    // Write output file next to original
-    const outputFullPath = path.join(inputDir, fromPosix(outputRelPath));
+    // Write output file in the configured output root.
     fs.mkdirSync(path.dirname(outputFullPath), { recursive: true });
     fs.writeFileSync(outputFullPath, outputBuffer);
   }

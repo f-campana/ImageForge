@@ -1,0 +1,728 @@
+import chalk from "chalk";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import pLimit from "p-limit";
+import {
+  discoverImages,
+  fileHash,
+  fromPosix,
+  outputPathFor,
+  processImage,
+  toPosix,
+} from "./processor";
+import type { ImageResult, OutputFormat, ProcessOptions } from "./processor";
+import type { ImageForgeEntry, ImageForgeManifest } from "./types";
+
+interface CacheEntry {
+  hash: string;
+  result: ImageForgeEntry;
+}
+
+interface ImageWorkItem {
+  imagePath: string;
+  relativePath: string;
+  hash: string;
+}
+
+interface RunnerError {
+  code: string;
+  message: string;
+  file?: string;
+}
+
+type WorkOutcome =
+  | {
+      kind: "cached";
+      item: ImageWorkItem;
+      entry: ImageForgeEntry;
+    }
+  | {
+      kind: "processed";
+      item: ImageWorkItem;
+      entry: ImageForgeEntry;
+      result: ImageResult;
+    }
+  | {
+      kind: "failed";
+      item: ImageWorkItem;
+      message: string;
+    }
+  | {
+      kind: "needs-processing";
+      item: ImageWorkItem;
+    };
+
+export interface RunOptions {
+  inputDir: string;
+  outputPath: string;
+  directoryArg: string;
+  commandName: string;
+  formats: OutputFormat[];
+  quality: number;
+  blur: boolean;
+  blurSize: number;
+  useCache: boolean;
+  forceOverwrite: boolean;
+  checkMode: boolean;
+  outDir: string | null;
+  concurrency: number;
+  json: boolean;
+  verbose: boolean;
+  quiet: boolean;
+}
+
+export interface RunImageReport {
+  file: string;
+  hash: string;
+  status: "processed" | "cached" | "failed" | "needs-processing";
+  message?: string;
+  outputs?: Record<string, { path: string; size: number }>;
+}
+
+export interface RunSummary {
+  total: number;
+  processed: number;
+  cached: number;
+  failed: number;
+  needsProcessing: number;
+  totalOriginalSize: number;
+  totalProcessedSize: number;
+  durationMs: number;
+}
+
+export interface RunReport {
+  version: string;
+  checkMode: boolean;
+  inputDir: string;
+  outputDir: string;
+  outputPath: string;
+  cachePath: string;
+  options: {
+    formats: OutputFormat[];
+    quality: number;
+    blur: boolean;
+    blurSize: number;
+    cache: boolean;
+    forceOverwrite: boolean;
+    concurrency: number;
+    json: boolean;
+    verbose: boolean;
+    quiet: boolean;
+  };
+  summary: RunSummary;
+  rerunCommand: string | null;
+  images: RunImageReport[];
+  errors: RunnerError[];
+}
+
+export interface RunResult {
+  exitCode: number;
+  report: RunReport;
+  manifest: ImageForgeManifest | null;
+}
+
+interface PreflightIssue {
+  message: string;
+  details: string[];
+}
+
+const CACHE_FILE = ".imageforge-cache.json";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOutputRecord(value: unknown): value is { path: string; size: number } {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.size === "number" &&
+    Number.isFinite(value.size)
+  );
+}
+
+function isManifestEntry(value: unknown): value is ImageForgeEntry {
+  if (!isRecord(value)) return false;
+  if (typeof value.width !== "number" || !Number.isFinite(value.width)) return false;
+  if (typeof value.height !== "number" || !Number.isFinite(value.height)) return false;
+  if (typeof value.aspectRatio !== "number" || !Number.isFinite(value.aspectRatio)) return false;
+  if (typeof value.blurDataURL !== "string") return false;
+  if (typeof value.originalSize !== "number" || !Number.isFinite(value.originalSize)) return false;
+  if (typeof value.hash !== "string") return false;
+  if (!isRecord(value.outputs)) return false;
+  for (const output of Object.values(value.outputs)) {
+    if (!isOutputRecord(output)) return false;
+  }
+  return true;
+}
+
+function isCacheEntry(value: unknown): value is CacheEntry {
+  return isRecord(value) && typeof value.hash === "string" && isManifestEntry(value.result);
+}
+
+function loadCache(cachePath: string): Map<string, CacheEntry> {
+  try {
+    if (!fs.existsSync(cachePath)) return new Map();
+    const content = fs.readFileSync(cachePath, "utf-8");
+    const parsed: unknown = JSON.parse(content);
+    if (!isRecord(parsed)) return new Map();
+    const entries: [string, CacheEntry][] = [];
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!isCacheEntry(value)) {
+        return new Map();
+      }
+      entries.push([key, value]);
+    }
+    return new Map(entries);
+  } catch {
+    return new Map();
+  }
+}
+
+function saveCacheAtomic(cachePath: string, cache: Map<string, CacheEntry>) {
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  const tempPath = `${cachePath}.${process.pid.toString()}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(Object.fromEntries(cache), null, 2));
+
+  try {
+    fs.renameSync(tempPath, cachePath);
+  } catch {
+    fs.rmSync(cachePath, { force: true });
+    fs.renameSync(tempPath, cachePath);
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes.toString()}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function cacheOutputsExist(entry: CacheEntry, inputDir: string): boolean {
+  for (const output of Object.values(entry.result.outputs)) {
+    const fullPath = path.resolve(inputDir, fromPosix(output.path));
+    if (!fs.existsSync(fullPath)) return false;
+  }
+  return true;
+}
+
+function canonicalPathKey(value: string): string {
+  return value.normalize("NFC").toLowerCase();
+}
+
+function resolveOutputPath(
+  relativePath: string,
+  format: OutputFormat,
+  inputDir: string,
+  outputDir: string
+) {
+  const outputInsideOutDir = outputPathFor(relativePath, format);
+  const fullOutputPath = path.resolve(outputDir, fromPosix(outputInsideOutDir));
+  return toPosix(path.relative(inputDir, fullOutputPath));
+}
+
+function preflightCollisions(
+  items: ImageWorkItem[],
+  options: ProcessOptions,
+  inputDir: string,
+  outputDir: string,
+  cache: Map<string, CacheEntry>,
+  useCache: boolean,
+  forceOverwrite: boolean
+): PreflightIssue | null {
+  const planned = new Map<string, { source: string; outputPath: string }>();
+  const cacheOwners = new Map<string, { source: string; outputPath: string }>();
+
+  for (const [source, entry] of cache.entries()) {
+    for (const output of Object.values(entry.result.outputs)) {
+      cacheOwners.set(canonicalPathKey(output.path), { source, outputPath: output.path });
+    }
+  }
+
+  for (const item of items) {
+    for (const format of options.formats) {
+      const outputPath = resolveOutputPath(item.relativePath, format, inputDir, outputDir);
+      const outputKey = canonicalPathKey(outputPath);
+      const existingSource = planned.get(outputKey);
+
+      if (existingSource && existingSource.source !== item.relativePath) {
+        return {
+          message: "Output collision detected:",
+          details: [
+            `  • ${existingSource.source} -> ${existingSource.outputPath}`,
+            `  • ${item.relativePath} -> ${outputPath}`,
+            "Fix: rename one source file or change --out-dir.",
+          ],
+        };
+      }
+
+      planned.set(outputKey, {
+        source: item.relativePath,
+        outputPath,
+      });
+
+      const fullOutputPath = path.resolve(inputDir, fromPosix(outputPath));
+      if (!fs.existsSync(fullOutputPath)) continue;
+      if (forceOverwrite) continue;
+
+      if (!useCache) {
+        return {
+          message: "Output path already exists and --no-cache is enabled:",
+          details: [
+            `  • ${item.relativePath} -> ${outputPath}`,
+            "Fix: remove existing outputs or rerun with --force-overwrite.",
+          ],
+        };
+      }
+
+      const owner = cacheOwners.get(outputKey);
+      if (!owner) {
+        return {
+          message: "Output path already exists and is not cache-owned:",
+          details: [
+            `  • ${item.relativePath} -> ${outputPath}`,
+            "Fix: remove or rename the existing output, or use --out-dir.",
+          ],
+        };
+      }
+
+      if (owner.source !== item.relativePath) {
+        return {
+          message: "Output path already exists and is owned by a different cached source:",
+          details: [
+            `  • ${owner.source} -> ${owner.outputPath}`,
+            `  • ${item.relativePath} -> ${outputPath}`,
+            "Fix: rename the source file, remove conflicting output, or use --out-dir.",
+          ],
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_.,/:-]+$/.test(value)) return value;
+  return `"${value.replace(/(["\\$`])/g, "\\$1")}"`;
+}
+
+function displayPath(targetPath: string): string {
+  const relative = path.relative(process.cwd(), targetPath);
+  if (relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+    return toPosix(relative);
+  }
+  return toPosix(targetPath);
+}
+
+function buildRerunCommand(options: RunOptions, outputDir: string): string {
+  const command: string[] = [
+    options.commandName,
+    options.directoryArg,
+    "--output",
+    displayPath(options.outputPath),
+    "--formats",
+    options.formats.join(","),
+    "--quality",
+    options.quality.toString(),
+    "--blur-size",
+    options.blurSize.toString(),
+    "--concurrency",
+    options.concurrency.toString(),
+  ];
+
+  if (!options.blur) command.push("--no-blur");
+  if (!options.useCache) command.push("--no-cache");
+  if (options.forceOverwrite) command.push("--force-overwrite");
+  if (options.outDir) {
+    command.push("--out-dir", displayPath(outputDir));
+  }
+
+  return command.map(shellQuote).join(" ");
+}
+
+function defaultParallelism(): number {
+  const available =
+    typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
+  return Math.max(1, Math.min(8, available));
+}
+
+export function getDefaultConcurrency(): number {
+  return defaultParallelism();
+}
+
+function createInitialReport(options: RunOptions, outputDir: string, cachePath: string): RunReport {
+  return {
+    version: "1.0",
+    checkMode: options.checkMode,
+    inputDir: options.inputDir,
+    outputDir,
+    outputPath: options.outputPath,
+    cachePath,
+    options: {
+      formats: options.formats,
+      quality: options.quality,
+      blur: options.blur,
+      blurSize: options.blurSize,
+      cache: options.useCache,
+      forceOverwrite: options.forceOverwrite,
+      concurrency: options.concurrency,
+      json: options.json,
+      verbose: options.verbose,
+      quiet: options.quiet,
+    },
+    summary: {
+      total: 0,
+      processed: 0,
+      cached: 0,
+      failed: 0,
+      needsProcessing: 0,
+      totalOriginalSize: 0,
+      totalProcessedSize: 0,
+      durationMs: 0,
+    },
+    rerunCommand: null,
+    images: [],
+    errors: [],
+  };
+}
+
+function addError(report: RunReport, code: string, message: string, file?: string) {
+  report.errors.push({ code, message, file });
+}
+
+export async function runImageforge(options: RunOptions): Promise<RunResult> {
+  const startTime = Date.now();
+  const inputDir = path.resolve(options.inputDir);
+  const outputDir = options.outDir ? path.resolve(options.outDir) : inputDir;
+  const outputPath = path.resolve(options.outputPath);
+  const cachePath = path.join(outputDir, CACHE_FILE);
+  const report = createInitialReport(
+    {
+      ...options,
+      inputDir,
+      outputPath,
+      outDir: options.outDir ? outputDir : null,
+    },
+    outputDir,
+    cachePath
+  );
+
+  const printInfo = (message: string) => {
+    if (!options.json) {
+      console.log(message);
+    }
+  };
+
+  const printError = (message: string) => {
+    if (!options.json) {
+      console.error(message);
+    }
+  };
+
+  const printPerFile = (message: string, isError = false) => {
+    if (options.json) return;
+    if (options.quiet && !isError) return;
+    if (isError) {
+      console.error(message);
+      return;
+    }
+    console.log(message);
+  };
+
+  if (!fs.existsSync(inputDir)) {
+    const message = `Directory not found: ${inputDir}`;
+    addError(report, "INPUT_NOT_FOUND", message);
+    printError(chalk.red(message));
+    report.summary.durationMs = Date.now() - startTime;
+    return { exitCode: 1, report, manifest: null };
+  }
+
+  const processOptions: ProcessOptions = {
+    formats: options.formats,
+    quality: options.quality,
+    blur: options.blur,
+    blurSize: options.blurSize,
+  };
+
+  const images = discoverImages(inputDir);
+  report.summary.total = images.length;
+
+  if (images.length === 0) {
+    printInfo(chalk.yellow(`No images found in ${inputDir}`));
+    report.summary.durationMs = Date.now() - startTime;
+    return { exitCode: 0, report, manifest: null };
+  }
+
+  if (!options.json) {
+    printInfo(chalk.bold(`\nimageforge\n`));
+    printInfo(
+      `Processing ${chalk.cyan(images.length.toString())} images in ${chalk.dim(inputDir)}`
+    );
+    printInfo(
+      `Formats: ${options.formats.map((f) => chalk.cyan(f)).join(", ")}  Quality: ${chalk.cyan(options.quality.toString())}  Blur: ${options.blur ? chalk.green("yes") : chalk.dim("no")}`
+    );
+    printInfo(
+      `Output root: ${chalk.dim(outputDir)}  Cache: ${options.useCache ? chalk.green("enabled") : chalk.dim("disabled")}`
+    );
+    printInfo(`Concurrency: ${chalk.cyan(options.concurrency.toString())}\n`);
+  }
+
+  if (options.verbose && !options.json) {
+    printInfo(chalk.dim(`Cache file: ${cachePath}`));
+    printInfo(chalk.dim(`Manifest output: ${outputPath}`));
+    printInfo(chalk.dim(`Check mode: ${options.checkMode ? "yes" : "no"}`));
+  }
+
+  const cache = options.useCache ? loadCache(cachePath) : new Map<string, CacheEntry>();
+  const writableCache = cache;
+
+  const items = images.map((imagePath) => {
+    const relativePath = toPosix(path.relative(inputDir, imagePath));
+    return {
+      imagePath,
+      relativePath,
+      hash: fileHash(imagePath, processOptions),
+    };
+  });
+
+  const collisionIssue = preflightCollisions(
+    items,
+    processOptions,
+    inputDir,
+    outputDir,
+    cache,
+    options.useCache,
+    options.forceOverwrite
+  );
+
+  if (collisionIssue) {
+    addError(report, "PREFLIGHT_COLLISION", collisionIssue.message);
+    printError(chalk.red(`\n${collisionIssue.message}`));
+    for (const line of collisionIssue.details) {
+      printError(chalk.red(line));
+    }
+    report.summary.durationMs = Date.now() - startTime;
+    return { exitCode: 1, report, manifest: null };
+  }
+
+  const manifest: ImageForgeManifest = {
+    version: "1.0",
+    generated: new Date().toISOString(),
+    images: {},
+  };
+
+  const limiter = pLimit(Math.max(1, options.concurrency));
+  const outcomes = await Promise.all(
+    items.map((item) =>
+      limiter(async (): Promise<WorkOutcome> => {
+        const cacheEntry = cache.get(item.relativePath);
+        if (
+          options.useCache &&
+          cacheEntry?.hash === item.hash &&
+          cacheOutputsExist(cacheEntry, inputDir)
+        ) {
+          return {
+            kind: "cached",
+            item,
+            entry: cacheEntry.result,
+          };
+        }
+
+        if (options.checkMode) {
+          return {
+            kind: "needs-processing",
+            item,
+          };
+        }
+
+        try {
+          const result = await processImage(item.imagePath, inputDir, processOptions, outputDir);
+          const entry: ImageForgeEntry = {
+            width: result.width,
+            height: result.height,
+            aspectRatio: result.aspectRatio,
+            blurDataURL: result.blurDataURL,
+            originalSize: result.originalSize,
+            outputs: result.outputs,
+            hash: item.hash,
+          };
+          return {
+            kind: "processed",
+            item,
+            result,
+            entry,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "unknown error";
+          return {
+            kind: "failed",
+            item,
+            message,
+          };
+        }
+      })
+    )
+  );
+
+  for (const [index, outcome] of outcomes.entries()) {
+    const progress = `[${(index + 1).toString()}/${items.length.toString()}]`;
+
+    if (outcome.kind === "cached") {
+      manifest.images[outcome.item.relativePath] = outcome.entry;
+      report.summary.cached += 1;
+      report.summary.totalOriginalSize += outcome.entry.originalSize;
+      for (const output of Object.values(outcome.entry.outputs)) {
+        report.summary.totalProcessedSize += output.size;
+      }
+      report.images.push({
+        file: outcome.item.relativePath,
+        hash: outcome.item.hash,
+        status: "cached",
+        outputs: outcome.entry.outputs,
+      });
+      if (!options.quiet) {
+        printPerFile(
+          `  ${chalk.dim(progress)} ${chalk.dim("○")} ${chalk.dim(outcome.item.relativePath)} ${chalk.dim("(cached)")}`
+        );
+      }
+      if (options.verbose && !options.json) {
+        printInfo(chalk.dim(`    hash=${outcome.item.hash}`));
+      }
+      continue;
+    }
+
+    if (outcome.kind === "needs-processing") {
+      report.summary.needsProcessing += 1;
+      report.images.push({
+        file: outcome.item.relativePath,
+        hash: outcome.item.hash,
+        status: "needs-processing",
+      });
+      if (!options.quiet) {
+        printPerFile(
+          `  ${chalk.dim(progress)} ${chalk.red("✗")} ${outcome.item.relativePath} ${chalk.red("(needs processing)")}`
+        );
+      }
+      continue;
+    }
+
+    if (outcome.kind === "failed") {
+      report.summary.failed += 1;
+      addError(report, "PROCESS_IMAGE_FAILED", outcome.message, outcome.item.relativePath);
+      report.images.push({
+        file: outcome.item.relativePath,
+        hash: outcome.item.hash,
+        status: "failed",
+        message: outcome.message,
+      });
+      printPerFile(
+        `  ${chalk.dim(progress)} ${chalk.red("✗")} ${outcome.item.relativePath} — ${chalk.red(outcome.message)}`,
+        true
+      );
+      continue;
+    }
+
+    manifest.images[outcome.item.relativePath] = outcome.entry;
+    writableCache.set(outcome.item.relativePath, {
+      hash: outcome.item.hash,
+      result: outcome.entry,
+    });
+    report.summary.processed += 1;
+    report.summary.totalOriginalSize += outcome.result.originalSize;
+
+    const outputSummary = Object.entries(outcome.result.outputs)
+      .map(([fmt, output]) => {
+        report.summary.totalProcessedSize += output.size;
+        const saving = Math.round((1 - output.size / outcome.result.originalSize) * 100);
+        const savingLabel =
+          saving >= 0
+            ? chalk.green(`-${saving.toString()}%`)
+            : chalk.yellow(`+${Math.abs(saving).toString()}%`);
+        return `${fmt} (${formatSize(outcome.result.originalSize)} → ${formatSize(output.size)}, ${savingLabel})`;
+      })
+      .join(", ");
+
+    report.images.push({
+      file: outcome.item.relativePath,
+      hash: outcome.item.hash,
+      status: "processed",
+      outputs: outcome.entry.outputs,
+    });
+
+    if (!options.quiet) {
+      printPerFile(
+        `  ${chalk.dim(progress)} ${chalk.green("✓")} ${outcome.item.relativePath} → ${outputSummary}`
+      );
+    }
+    if (options.verbose && !options.json) {
+      printInfo(chalk.dim(`    hash=${outcome.item.hash}`));
+    }
+  }
+
+  report.summary.durationMs = Date.now() - startTime;
+
+  if (options.checkMode) {
+    report.rerunCommand = buildRerunCommand(
+      {
+        ...options,
+        inputDir,
+        outputPath,
+        outDir: options.outDir ? outputDir : null,
+      },
+      outputDir
+    );
+
+    if (report.summary.needsProcessing > 0) {
+      printInfo(
+        chalk.red(
+          `\n${report.summary.needsProcessing.toString()} image(s) need processing. Run: ${report.rerunCommand}`
+        )
+      );
+      return { exitCode: 1, report, manifest: null };
+    }
+
+    printInfo(chalk.green("\nAll images up to date."));
+    return { exitCode: 0, report, manifest: null };
+  }
+
+  if (options.useCache) {
+    saveCacheAtomic(cachePath, writableCache);
+  }
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
+
+  if (!options.json) {
+    const duration = (report.summary.durationMs / 1000).toFixed(1);
+    const totalSaving =
+      report.summary.totalOriginalSize > 0
+        ? Math.round(
+            (1 - report.summary.totalProcessedSize / report.summary.totalOriginalSize) * 100
+          )
+        : 0;
+    const totalSavingLabel =
+      totalSaving >= 0
+        ? chalk.green(`-${totalSaving.toString()}%`)
+        : chalk.yellow(`+${Math.abs(totalSaving).toString()}%`);
+
+    printInfo(chalk.dim("\n" + "─".repeat(50)));
+    printInfo(`\nDone in ${chalk.bold(`${duration}s`)}`);
+    printInfo(
+      `  ${chalk.green(report.summary.processed.toString())} processed, ${chalk.dim(report.summary.cached.toString())} cached${report.summary.failed > 0 ? `, ${chalk.red(report.summary.failed.toString())} failed` : ""}`
+    );
+    if (report.summary.totalOriginalSize > 0) {
+      printInfo(
+        `  Total: ${formatSize(report.summary.totalOriginalSize)} → ${formatSize(report.summary.totalProcessedSize)} (${totalSavingLabel})`
+      );
+    }
+    printInfo(`  Manifest: ${chalk.cyan(path.relative(process.cwd(), outputPath))}\n`);
+  }
+
+  return {
+    exitCode: report.summary.failed > 0 ? 1 : 0,
+    report,
+    manifest,
+  };
+}
