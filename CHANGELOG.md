@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2](https://github.com/f-campana/imageforge/compare/v0.1.1...v0.1.2) (2026-02-10)
+
+
+### Bug Fixes
+
+* **ci:** allow manual publish workflow dispatch ([7a3c38b](https://github.com/f-campana/imageforge/commit/7a3c38b97acad6e018b1d715ea426ff5d779e35b))
+* **ci:** stabilize release checks after version bump ([f51b60b](https://github.com/f-campana/imageforge/commit/f51b60bd27295fd71579b7730f88571c28fb885c))
+
 ## [0.1.1](https://github.com/f-campana/imageforge/compare/v0.1.0...v0.1.1) (2026-02-09)
 
 ### Features
