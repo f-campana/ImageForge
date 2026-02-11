@@ -36,7 +36,7 @@ Allowed types include: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test
 - Tags follow SemVer with a `v` prefix (for example `v0.1.1`) and are managed by release automation.
 - Release Please uses the `RELEASE_PLEASE_TOKEN` secret (PAT) so release/tag events can trigger downstream workflows.
 - npm publication is automated from GitHub `release.published` events via `.github/workflows/publish.yml` (with `workflow_dispatch` retained as break-glass fallback).
-- `NPM_TOKEN` must be configured in repository secrets for publish jobs.
+- npm publish uses GitHub OIDC trusted publishing (`id-token: write`); no `NPM_TOKEN` secret is required when the npm trusted publisher is configured.
 - Do not manually edit `CHANGELOG.md` for routine releases; it is generated via release automation.
 
 ## Git Identity (Maintainers)

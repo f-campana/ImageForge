@@ -261,6 +261,7 @@ Quality checks run in CI on Node `22` and `24`.
 - Conventional Commits are required for commits and PR titles.
 - Releases and `CHANGELOG.md` updates are automated via Release Please.
 - Tags follow annotated SemVer with `v` prefix (for example `v0.1.3`).
+- npm publish workflow uses GitHub OIDC trusted publishing.
 
 Run the local pre-release gate before publishing:
 
