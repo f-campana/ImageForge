@@ -1,51 +1,69 @@
-# ImageForge CLI
+<p align="center">
+  <a href="https://github.com/f-campana/imageforge">
+    <img src="./assets/imageforge-logo.svg" alt="ImageForge" width="440" />
+  </a>
+</p>
 
-Build-time image pipeline for Next.js and web apps: generate blur placeholders and optimized formats with hash-based caching.
+<p align="center">
+  Build-time image pipeline for Next.js and web apps.
+</p>
 
-## Why ImageForge
+<p align="center">
+  <a href="https://www.npmjs.com/package/@imageforge/cli"><strong>npm</strong></a>
+  ·
+  <a href="./CONTRIBUTING.md"><strong>Contributing</strong></a>
+  ·
+  <a href="./SECURITY.md"><strong>Security</strong></a>
+  ·
+  <a href="./CHANGELOG.md"><strong>Changelog</strong></a>
+</p>
 
-- WebP and AVIF conversion from one command
-- blur placeholder generation (`blurDataURL`)
-- hash-based caching for fast reruns
-- bounded parallel processing with `--concurrency`
-- `--check` mode for CI validation
+<p align="center">
+  <a href="https://github.com/f-campana/imageforge/actions/workflows/ci.yml">
+    <img src="https://github.com/f-campana/imageforge/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" />
+  </a>
+  <a href="https://github.com/f-campana/imageforge/actions/workflows/release-please.yml">
+    <img src="https://github.com/f-campana/imageforge/actions/workflows/release-please.yml/badge.svg?branch=main" alt="Release Please" />
+  </a>
+  <a href="https://www.npmjs.com/package/@imageforge/cli">
+    <img src="https://img.shields.io/npm/v/%40imageforge%2Fcli?logo=npm" alt="npm version" />
+  </a>
+  <a href="https://www.npmjs.com/package/@imageforge/cli">
+    <img src="https://img.shields.io/npm/dm/%40imageforge%2Fcli?logo=npm" alt="npm downloads" />
+  </a>
+  <a href="https://www.npmjs.com/package/@imageforge/cli">
+    <img src="https://img.shields.io/node/v/%40imageforge%2Fcli" alt="Node version" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/npm/l/%40imageforge%2Fcli" alt="License" />
+  </a>
+</p>
+
+Generate optimized derivatives (`webp`, `avif`) and `blurDataURL` placeholders with hash-based caching.
+
+## Features
+
+- One command for image conversion + manifest generation
+- Blur placeholder generation for `next/image` (`blurDataURL`)
+- Hash-based cache for fast reruns
+- Bounded parallel processing with `--concurrency`
+- Deterministic CI guard with `--check`
+- Structured machine output with `--json`
 
 ## Install
+
+Runtime requirement: **Node.js >= 22**.
+
+Install globally:
 
 ```bash
 npm install -g @imageforge/cli
 ```
 
-## Development (pnpm)
+Run without global install:
 
 ```bash
-pnpm install
-pnpm build
-pnpm run typecheck
-pnpm run lint
-pnpm run format:check
-pnpm test
-pnpm run check
-```
-
-## Open Source Workflow
-
-- Conventional Commit messages are required for commits and PR titles.
-- Releases and `CHANGELOG.md` updates are automated via Release Please.
-- Tags follow annotated SemVer with a `v` prefix (for example `v0.1.1`).
-
-See:
-
-- [CONTRIBUTING](./CONTRIBUTING.md)
-- [SECURITY](./SECURITY.md)
-- [CODE_OF_CONDUCT](./CODE_OF_CONDUCT.md)
-
-## Release Verify
-
-Run the pre-release gate locally before publishing:
-
-```bash
-pnpm run release:verify
+npx @imageforge/cli ./public/images
 ```
 
 ## Quick Start
@@ -56,60 +74,65 @@ imageforge ./public/images
 
 By default this writes:
 
-- derivatives next to source files (for example `hero.jpg -> hero.webp`)
-- cache file at `./public/images/.imageforge-cache.json`
-- manifest at `./imageforge.json`
+- Derivatives next to source files (for example `hero.jpg -> hero.webp`)
+- Cache file at `./public/images/.imageforge-cache.json`
+- Manifest at `./imageforge.json`
 
-With `--out-dir`, derivatives and cache are written under that directory while manifest output paths stay relative to the input directory.
+Generate both formats:
 
-## Usage
+```bash
+imageforge ./public/images --formats webp,avif
+```
+
+Write outputs to a dedicated directory:
+
+```bash
+imageforge ./public/images --out-dir ./public/generated
+```
+
+## CLI Usage
 
 ```bash
 imageforge <directory> [options]
 ```
 
-Options:
+| Option                                       | Description                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| `-o, --output <path>`                        | Manifest output path (default: `imageforge.json`)                      |
+| `-f, --formats <formats>`                    | Output formats, comma-separated (default: `webp`)                      |
+| `-q, --quality <number>`                     | Output quality `1..100` (default: `80`)                                |
+| `--blur` / `--no-blur`                       | Enable/disable blur placeholder generation                             |
+| `--blur-size <number>`                       | Blur dimensions `1..256` (default: `4`)                                |
+| `--cache` / `--no-cache`                     | Enable/disable cache reads/writes                                      |
+| `--force-overwrite` / `--no-force-overwrite` | Allow/disallow overwriting existing outputs                            |
+| `--check` / `--no-check`                     | Check mode for CI (exit `1` if processing is needed)                   |
+| `--out-dir <path>`                           | Output directory for generated derivatives                             |
+| `--concurrency <number>`                     | Parallel processing (`1..64`, default: `min(8, availableParallelism)`) |
+| `--json` / `--no-json`                       | Emit machine-readable JSON report to stdout                            |
+| `--verbose` / `--no-verbose`                 | Show additional diagnostics                                            |
+| `--quiet` / `--no-quiet`                     | Suppress per-file non-error logs                                       |
+| `--config <path>`                            | Explicit JSON config path                                              |
+| `-V, --version`                              | Print version                                                          |
+| `-h, --help`                                 | Print help                                                             |
 
-- `-o, --output <path>`: manifest output path (default: `imageforge.json`)
-- `-f, --formats <formats>`: comma-separated output formats (default: `webp`)
-- `-q, --quality <number>`: output quality 1..100 (default: `80`)
-- `--no-blur`: skip blur placeholder generation
-- `--blur-size <number>`: blur dimensions 1..256 (default: `4`)
-- `--no-cache`: disable cache reads/writes
-- `--force-overwrite`: allow overwriting existing output files
-- `--check`: exit with code `1` when files need processing
-- `--out-dir <path>`: separate output directory for generated files
-- `--concurrency <number>`: process images in parallel (default: `min(8, availableParallelism)`)
-- `--json`: emit structured JSON report to stdout
-- `--verbose`: print additional diagnostics (cache path, hashes, mode details)
-- `--quiet`: suppress per-file non-error logs
-- `--config <path>`: explicitly load a JSON config file
-- `-V, --version`: print version
-- `-h, --help`: print help
+## Runtime Behavior
 
-Runtime behavior:
+- Normal runs exit with code `1` if any file fails processing.
+- `--check` exits `1` when at least one file needs processing, otherwise `0`.
+- Symlinks are skipped during discovery.
+- Output collision checks are case-insensitive.
+- Existing outputs are protected unless explicitly overwritten with `--force-overwrite`.
+- With `--check`, ImageForge prints an exact copy-pastable rerun command.
 
-- normal runs exit with code `1` if any file fails processing
-- output collision checks are case-insensitive (`hero.jpg` and `Hero.png` are treated as conflicting outputs)
-- when cache is enabled, existing output files must be cache-owned or the run fails fast
-- if cache-enabled ownership protection blocks a run, `--force-overwrite` is the explicit override
-- `--no-cache` ignores cache file reads/writes entirely
-- with `--no-cache`, existing outputs are protected by default; use `--force-overwrite` to overwrite
-- symlinks are skipped during discovery (the walker does not recurse into symlinked directories)
-- `--check` prints an exact copy-pastable rerun command with effective processing options
-- standard logs include progress prefixes like `[42/500]`
+## Configuration
 
-## Config File Support
+Config resolution order:
 
-ImageForge resolves configuration in this order:
-
-1. defaults
-2. config file (`--config <path>`, otherwise `imageforge.config.json`, otherwise `package.json#imageforge`)
+1. Internal defaults
+2. Config file (`--config <path>`, otherwise `imageforge.config.json`, otherwise `package.json#imageforge`)
 3. CLI flags
 
 Unknown config keys fail fast.
-
-Boolean options can be explicitly disabled from CLI using `--no-<flag>` (for example `--no-check`, `--no-json`, `--no-force-overwrite`, `--no-quiet`).
 
 Example `imageforge.config.json`:
 
@@ -126,9 +149,9 @@ Example `imageforge.config.json`:
 }
 ```
 
-## JSON Output Mode
+## JSON Output
 
-Use `--json` to emit a machine-readable report to stdout:
+Use `--json` to emit a structured report:
 
 ```bash
 imageforge ./public/images --json
@@ -136,20 +159,14 @@ imageforge ./public/images --json
 
 The report includes:
 
-- normalized effective options
-- per-image status (`processed`, `cached`, `failed`, `needs-processing`)
-- summary counters and byte totals
-- rerun command hint in `--check` failures
+- Effective options
+- Per-image status (`processed`, `cached`, `failed`, `needs-processing`)
+- Summary counters and size totals
+- Rerun command hint for `--check` failures
 
-## Source Format Scope (v0.1.0)
+## Manifest
 
-ImageForge v0.1.0 processes: `jpg`, `jpeg`, `png`, `gif`, `tiff`, `tif`.
-
-`webp` and `avif` source inputs are intentionally excluded in v0.1.0 to avoid in-place overwrite loops. Support for those as source inputs is planned for v0.2.0.
-
-GIF handling is static-only in v0.1.0 (animated GIFs are processed as first frame).
-
-## Manifest Shape
+Manifest shape (`imageforge.json`):
 
 ```json
 {
@@ -172,12 +189,13 @@ GIF handling is static-only in v0.1.0 (animated GIFs are processed as first fram
 }
 ```
 
-All manifest keys and output paths are input-directory-relative POSIX paths (forward slashes).
+Notes:
 
-When `--out-dir` is used, each output path is still relative to the input directory (for example `generated/hero.webp`).
-If `--out-dir` is outside the input tree, manifest output paths can contain `../` segments by design.
+- Manifest keys and output paths are input-directory-relative POSIX paths.
+- When using `--out-dir`, output paths remain relative to the input directory.
+- If `--out-dir` is outside the input tree, manifest paths may include `../` segments.
 
-## Next.js Example
+## Next.js Integration Example
 
 ```ts
 import manifest from "./imageforge.json";
@@ -191,12 +209,12 @@ export function getImageData(src: string) {
 
 Then use:
 
-- original source path for `src`
+- Original source path for `src`
 - `getImageData(src)?.blurDataURL` for `placeholder="blur"`
 
 ## Programmatic API
 
-ImageForge now exports processor helpers from the package root and `./processor` subpath.
+ImageForge exports processor helpers from package root and `./processor` subpath:
 
 ```ts
 const imageforge = require("@imageforge/cli");
@@ -205,29 +223,63 @@ const processor = require("@imageforge/cli/processor");
 
 Useful exports include `processImage`, `convertImage`, `generateBlurDataURL`, and manifest types.
 
-## Git Hygiene (In-place Outputs)
+## Source Input Scope
 
-If you do not want generated outputs committed, add:
+Current supported source extensions:
 
-```gitignore
-# ImageForge generated outputs
-**/*.webp
-**/*.avif
+- `jpg`, `jpeg`, `png`, `gif`, `tiff`, `tif`
 
-# ImageForge cache
-**/.imageforge-cache.json
-```
+Notes:
 
-## CI Check Mode
+- `webp` and `avif` source files are currently excluded as inputs.
+- GIF handling is static-only (first frame).
+
+## CI Mode
+
+Use check mode in CI to fail when assets are out of date:
 
 ```bash
 imageforge ./public/images --check
 ```
 
-- exits `0` when all inputs are up to date
-- exits `1` when at least one input needs processing
-- failure output includes the exact non-check command to run with the same processing options
+## Development
 
-## CI Matrix Note
+```bash
+pnpm install
+pnpm build
+pnpm run typecheck
+pnpm run lint
+pnpm run format:check
+pnpm test
+pnpm run check
+```
 
-GitHub Actions runs quality checks on Node 22/24 to align with the `engines.node >=22` policy.
+Quality checks run in CI on Node `22` and `24`.
+
+## Release Workflow
+
+- Conventional Commits are required for commits and PR titles.
+- Releases and `CHANGELOG.md` updates are automated via Release Please.
+- Tags follow annotated SemVer with `v` prefix (for example `v0.1.3`).
+
+Run the local pre-release gate before publishing:
+
+```bash
+pnpm run release:verify
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Security
+
+See [SECURITY.md](./SECURITY.md).
+
+## Code of Conduct
+
+See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](./LICENSE)

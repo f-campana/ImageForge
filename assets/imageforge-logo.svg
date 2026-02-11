@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 140" role="img" aria-labelledby="title desc">
+  <title id="title">ImageForge</title>
+  <desc id="desc">Minimal monochrome ImageForge wordmark.</desc>
+
+  <defs>
+    <style>
+      .word {
+        fill: #0f172a;
+      }
+      @media (prefers-color-scheme: dark) {
+        .word {
+          fill: #f8fafc;
+        }
+      }
+    </style>
+  </defs>
+
+  <text
+    x="430"
+    y="98"
+    text-anchor="middle"
+    class="word"
+    font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="92"
+    font-weight="760"
+    letter-spacing="-1.2"
+  >
+    Image<tspan dx="10">Forge</tspan>
+  </text>
+</svg>
