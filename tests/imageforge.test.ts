@@ -322,6 +322,40 @@ describe("discoverImages", () => {
     expect(names).toContain("inside.jpg");
     expect(names.filter((name) => name === "inside.jpg")).toHaveLength(1);
   });
+
+  it("skips unreadable directories and continues discovery", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const unreadableDir = path.join(FIXTURES, "unreadable");
+    fs.rmSync(unreadableDir, { recursive: true, force: true });
+    fs.mkdirSync(unreadableDir, { recursive: true });
+    await createJpeg(path.join(unreadableDir, "hidden.jpg"), 16, 16, { r: 3, g: 3, b: 3 });
+
+    try {
+      fs.chmodSync(unreadableDir, 0o000);
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES") {
+        return;
+      }
+      throw err;
+    }
+
+    try {
+      const warnings: { path: string; message: string }[] = [];
+      const names = discoverImages(FIXTURES, (warning) => warnings.push(warning)).map((filePath) =>
+        path.basename(filePath)
+      );
+
+      expect(names).not.toContain("hidden.jpg");
+      expect(warnings.some((warning) => warning.path.includes("unreadable"))).toBe(true);
+    } finally {
+      fs.chmodSync(unreadableDir, 0o755);
+      fs.rmSync(unreadableDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("fileHash", () => {
@@ -766,6 +800,32 @@ describe("CLI integration", () => {
     expect(cache.entries["a.jpg"]).toBeDefined();
   });
 
+  it("prunes cache entries for deleted source files", () => {
+    const dir = path.join(cliDir, "cache-prune");
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(path.join(cliDir, "test.jpg"), path.join(dir, "a.jpg"));
+    fs.copyFileSync(path.join(cliDir, "test.jpg"), path.join(dir, "b.jpg"));
+
+    const manifestPath = path.join(OUTPUT, "cache-prune.json");
+    const first = runCli([dir, "-o", manifestPath]);
+    expect(first.status).toBe(0);
+
+    fs.rmSync(path.join(dir, "b.jpg"), { force: true });
+    const second = runCli([dir, "-o", manifestPath]);
+    expect(second.status).toBe(0);
+
+    const cache = JSON.parse(
+      fs.readFileSync(path.join(dir, ".imageforge-cache.json"), "utf-8")
+    ) as {
+      version: number;
+      entries: Record<string, unknown>;
+    };
+
+    expect(cache.version).toBe(1);
+    expect(Object.keys(cache.entries).sort()).toEqual(["a.jpg"]);
+  });
+
   it("fails when cache lock cannot be acquired in time", () => {
     const dir = path.join(cliDir, "cache-lock-timeout");
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1116,6 +1176,23 @@ describe("CLI integration", () => {
     const result = runCli([cliDir, "-o", manifestPath, "--quality", "0"]);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Invalid quality");
+  });
+
+  it("rejects malformed numeric CLI values", () => {
+    const malformedQuality = runCli([cliDir, "-o", manifestPath, "--quality", "80abc"]);
+    expect(malformedQuality.status).toBe(1);
+    expect(malformedQuality.stderr).toContain("Invalid quality");
+    expect(malformedQuality.stderr).toContain("valid integer");
+
+    const malformedBlurSize = runCli([cliDir, "-o", manifestPath, "--blur-size", "4abc"]);
+    expect(malformedBlurSize.status).toBe(1);
+    expect(malformedBlurSize.stderr).toContain("Invalid blur size");
+    expect(malformedBlurSize.stderr).toContain("valid integer");
+
+    const malformedConcurrency = runCli([cliDir, "-o", manifestPath, "--concurrency", "2abc"]);
+    expect(malformedConcurrency.status).toBe(1);
+    expect(malformedConcurrency.stderr).toContain("Invalid concurrency");
+    expect(malformedConcurrency.stderr).toContain("valid integer");
   });
 
   it("validates idempotency of manifest content except generated timestamp", async () => {

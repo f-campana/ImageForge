@@ -23,6 +23,11 @@ export interface ProcessOptions {
   blurSize: number;
 }
 
+export interface DiscoveryWarning {
+  path: string;
+  message: string;
+}
+
 const LIMIT_INPUT_PIXELS = 100_000_000;
 const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 
@@ -45,14 +50,37 @@ export function outputPathFor(relativePath: string, format: OutputFormat): strin
   return path.posix.join(parsed.dir, `${parsed.name}.${format}`);
 }
 
-export function discoverImages(dir: string): string[] {
+export function discoverImages(
+  dir: string,
+  onWarning?: (warning: DiscoveryWarning) => void
+): string[] {
   const discovered: string[] = [];
 
   function walk(current: string) {
-    const entries = fs.readdirSync(current);
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(current);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      onWarning?.({
+        path: toPosix(current),
+        message,
+      });
+      return;
+    }
     for (const entry of entries) {
       const fullPath = path.join(current, entry);
-      const stat = fs.lstatSync(fullPath);
+      let stat: fs.Stats;
+      try {
+        stat = fs.lstatSync(fullPath);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        onWarning?.({
+          path: toPosix(fullPath),
+          message,
+        });
+        continue;
+      }
       if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory() && !entry.startsWith(".") && !IGNORED_DIRS.has(entry)) {
         walk(fullPath);

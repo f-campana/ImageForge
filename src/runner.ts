@@ -11,7 +11,7 @@ import {
   processImage,
   toPosix,
 } from "./processor";
-import type { ImageResult, OutputFormat, ProcessOptions } from "./processor";
+import type { DiscoveryWarning, ImageResult, OutputFormat, ProcessOptions } from "./processor";
 import type { ImageForgeEntry, ImageForgeManifest } from "./types";
 
 interface CacheEntry {
@@ -235,22 +235,18 @@ async function acquireCacheLock(lockPath: string): Promise<number> {
         const stat = fs.statSync(lockPath);
         if (Date.now() - stat.mtimeMs > staleMs) {
           const ownerPid = readLockOwnerPid(lockPath);
-          if (
-            ownerPid !== null &&
-            ownerPid !== process.pid &&
-            isProcessAlive(ownerPid)
-          ) {
+          if (ownerPid !== null && ownerPid !== process.pid && isProcessAlive(ownerPid)) {
             // The lock owner is still alive; keep waiting instead of stealing the lock.
           } else {
-          try {
-            fs.rmSync(lockPath);
-          } catch (removeErr) {
-            const removeCode = (removeErr as NodeJS.ErrnoException).code;
-            if (removeCode !== "ENOENT") {
-              throw removeErr;
+            try {
+              fs.rmSync(lockPath);
+            } catch (removeErr) {
+              const removeCode = (removeErr as NodeJS.ErrnoException).code;
+              if (removeCode !== "ENOENT") {
+                throw removeErr;
+              }
             }
-          }
-          continue;
+            continue;
           }
         }
       } catch (statErr) {
@@ -638,8 +634,17 @@ export async function runImageforge(options: RunOptions): Promise<RunResult> {
       }
     }
 
-    const images = discoverImages(inputDir);
+    const discoveryWarnings: DiscoveryWarning[] = [];
+    const images = discoverImages(inputDir, (warning) => {
+      discoveryWarnings.push(warning);
+    });
     report.summary.total = images.length;
+
+    for (const warning of discoveryWarnings) {
+      const warningMessage = `Skipping "${warning.path}" during discovery: ${warning.message}`;
+      addError(report, "DISCOVERY_WARNING", warningMessage, warning.path);
+      printError(chalk.yellow(`Warning: ${warningMessage}`));
+    }
 
     if (images.length === 0) {
       printInfo(chalk.yellow(`No images found in ${inputDir}`));
@@ -678,6 +683,24 @@ export async function runImageforge(options: RunOptions): Promise<RunResult> {
         hash: fileHash(imagePath, processOptions),
       };
     });
+
+    if (options.useCache) {
+      const sourceKeys = new Set(items.map((item) => item.relativePath));
+      let prunedEntries = 0;
+      for (const key of writableCache.keys()) {
+        if (!sourceKeys.has(key)) {
+          writableCache.delete(key);
+          prunedEntries += 1;
+        }
+      }
+      if (prunedEntries > 0 && options.verbose && !options.json) {
+        printInfo(
+          chalk.dim(
+            `Pruned ${prunedEntries.toString()} stale cache entr${prunedEntries === 1 ? "y" : "ies"}.`
+          )
+        );
+      }
+    }
 
     const collisionIssue = preflightCollisions(
       items,

@@ -70,9 +70,13 @@ function parseNumberOption(label: string, rawValue: unknown): number {
 }
 
 function parseIntegerFromString(label: string, rawValue: string): number {
-  const parsed = Number.parseInt(rawValue, 10);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Invalid ${label}: "${rawValue}" is not a number.`);
+  const normalized = rawValue.trim();
+  if (!/^[+-]?\d+$/u.test(normalized)) {
+    throw new Error(`Invalid ${label}: "${rawValue}" is not a valid integer.`);
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`Invalid ${label}: "${rawValue}" is outside supported integer range.`);
   }
   return parsed;
 }
