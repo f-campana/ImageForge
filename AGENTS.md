@@ -1,11 +1,13 @@
 # AGENTS.md
 
 ## Project Overview
+
 ImageForge is a TypeScript CLI package (`@imageforge/cli`) that scans image directories, generates optimized `webp`/`avif` derivatives, and writes a manifest (`imageforge.json`) with metadata and `blurDataURL` values.
 
 Primary implementation lives in `src/` and ships as compiled CommonJS output in `dist/`.
 
 ## Tech Stack
+
 - Runtime: Node.js `>=22`
 - Package manager: `pnpm` (`packageManager: pnpm@10.28.2`)
 - Language/build: TypeScript (`tsc`)
@@ -14,6 +16,7 @@ Primary implementation lives in `src/` and ships as compiled CommonJS output in 
 - CI/CD: GitHub Actions (`ci.yml`, `release-please.yml`, `publish.yml`)
 
 ## Setup and Commands
+
 Run from repo root.
 
 ```bash
@@ -38,11 +41,13 @@ pnpm run release:verify
 ```
 
 Command intent:
+
 - `pnpm run check`: local quality gate (`typecheck + lint + format:check + test`).
 - `pnpm run test:e2e`: packaged install smoke test (`tests/packaged-install.e2e.test.ts`).
 - `pnpm run release:verify`: pre-release gate (`check + build + pnpm pack --dry-run`).
 
 ## Coding Conventions
+
 - Write source changes in `src/*.ts`; do not hand-edit compiled output in `dist/`.
 - Keep TypeScript strictness intact; avoid weakening types or bypassing lint rules without a strong reason.
 - Follow existing formatting/style enforced by Prettier and ESLint:
@@ -54,6 +59,7 @@ Command intent:
 - When behavior touches CLI, packaging, exports, or config loading, update tests in `tests/imageforge.test.ts` and `tests/packaged-install.e2e.test.ts` in the same PR.
 
 ## Testing and Validation
+
 Minimum before opening/updating a PR:
 
 ```bash
@@ -63,14 +69,17 @@ pnpm run test:e2e
 ```
 
 Run additional validation when relevant:
+
 - Release workflow changes: `pnpm run release:verify`
 - If `package.json` or `pnpm-lock.yaml` changes: `pnpm audit --prod --audit-level=high`
 
 Notes:
+
 - `pnpm test` excludes the packaged-install E2E test by design.
 - Tests create and delete temporary fixtures under `tests/fixtures`, `tests/cli-fixtures`, `tests/config-fixtures`, and `tests/test-output`.
 
 ## Workflow and PR Rules
+
 - Use Conventional Commits for commit messages (e.g. `feat(cli): ...`, `fix(cache): ...`).
 - PR titles must be semantic/Conventional Commit compatible (enforced by workflow).
 - Keep PRs focused; describe behavior changes and edge cases in PR description.
@@ -80,6 +89,7 @@ Notes:
   - Tags are SemVer with `v` prefix.
 
 ## Safety and Guardrails
+
 - Do not commit secrets, tokens, or local machine paths.
 - Do not manually edit generated/release artifacts unless the task explicitly requires it:
   - `dist/`
@@ -89,6 +99,7 @@ Notes:
 - If using the optional local pre-push hook (`.githooks/pre-push`), keep `git user.email` set to a GitHub noreply address as enforced by the hook.
 
 ## Project Context and Key Files
+
 - `package.json`: scripts, package exports, Node/pnpm requirements.
 - `src/cli.ts`: CLI options, validation, config merge precedence, process exit behavior.
 - `src/config.ts`: config loading from `--config`, `imageforge.config.json`, and `package.json#imageforge`.
@@ -102,6 +113,7 @@ Notes:
 - `RELEASE_CHECKLIST.md`: manual release validation playbook.
 
 ## Directory-Specific Notes
+
 - Add `**/AGENTS.override.md` only when a subdirectory has different commands, constraints, or release workflow.
 - Use these directory expectations:
   - `src/`: production code.
