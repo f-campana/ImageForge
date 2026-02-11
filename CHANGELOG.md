@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5](https://github.com/f-campana/imageforge/compare/v0.1.4...v0.1.5) (2026-02-11)
+
+
+### Bug Fixes
+
+* **cli:** harden parsing discovery and cache lifecycle ([ee115f9](https://github.com/f-campana/imageforge/commit/ee115f92736f633ca11263bca5718febcf4a7216))
+* **lock:** add heartbeat and owner-aware stale reclaim ([3aa7a55](https://github.com/f-campana/imageforge/commit/3aa7a552b15e16d96f1f920293955878a7a9abfb))
+
 ## [0.1.4](https://github.com/f-campana/imageforge/compare/v0.1.3...v0.1.4) (2026-02-11)
 
 
