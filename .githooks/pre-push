@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+email="$(git config --get user.email || true)"
+
+if [[ -z "${email}" || "${email}" != *@users.noreply.github.com ]]; then
+  echo "pre-push blocked: git user.email must end with @users.noreply.github.com."
+  echo "Current value: ${email:-<unset>}"
+  echo "Run: git config --global user.email \"37816914+f-campana@users.noreply.github.com\""
+  exit 1
+fi

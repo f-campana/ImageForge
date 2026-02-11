@@ -28,11 +28,30 @@ Allowed types include: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test
 3. Use a semantic PR title (Conventional Commit format).
 4. Explain behavior changes and edge cases in the PR description.
 5. If release behavior is touched, verify both release and publish workflows still pass.
+6. Commit message lint is enforced during PR validation (`Commit Message Lint (PR only)`), not on direct push runs.
 
 ## Releases and Tags
 
 - Releases are automated by Release Please from Conventional Commits on `main`.
 - Tags follow SemVer with a `v` prefix (for example `v0.1.1`) and are managed by release automation.
-- npm publication is automated from GitHub `release.published` events via `.github/workflows/publish.yml`.
+- Release Please uses the `RELEASE_PLEASE_TOKEN` secret (PAT) so release/tag events can trigger downstream workflows.
+- npm publication is automated from GitHub `release.published` events via `.github/workflows/publish.yml` (with `workflow_dispatch` retained as break-glass fallback).
 - `NPM_TOKEN` must be configured in repository secrets for publish jobs.
 - Do not manually edit `CHANGELOG.md` for routine releases; it is generated via release automation.
+
+## Git Identity (Maintainers)
+
+Set a canonical Git identity before contributing:
+
+```bash
+git config --global user.name "Fabien Campana"
+git config --global user.email "37816914+f-campana@users.noreply.github.com"
+git config --global user.useConfigOnly true
+```
+
+Optional local guardrail: configure the repository hook path to enforce a noreply author email at push time.
+
+```bash
+git config --local core.hooksPath .githooks
+chmod +x .githooks/pre-push
+```

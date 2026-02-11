@@ -12,7 +12,7 @@ permissions:
 jobs:
   commit-messages:
     if: github.event_name == 'pull_request'
-    name: Commit Message Lint
+    name: Commit Message Lint (PR only)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
