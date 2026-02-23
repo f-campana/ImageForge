@@ -1,22 +1,71 @@
 {
-  "reportDate": "2026-02-20",
+  "reportDate": "2026-02-23",
   "baselineDate": "2026-02-15",
   "baselineSource": "Prior audit snapshot provided in thread (2026-02-15).",
-  "generatedAt": "2026-02-20T13:33:27Z",
+  "generatedAt": "2026-02-23T16:09:11Z",
   "scope": {
     "imageforge": {
       "path": "/Users/fabiencampana/Documents/ImageForge",
       "branch": "main",
-      "sha": "c0ecd1ad085f008df4be95804a907b909457f760"
+      "sha": "2f4a1cb7acb4869aa54cc0e32c03320e7b2a5fdc"
     },
     "imageforgeSite": {
       "path": "/Users/fabiencampana/Documents/imageforge-site",
       "branch": "main",
-      "sha": "fdf1dcf91cbfc765fd5e53a0128e9328fc7d544e",
+      "sha": "121cdae8fb1f8a92325dd22b382364f9a0f8b933",
       "analyzedViaArchiveAt": "/Users/fabiencampana/Documents/imageforge-site"
     }
   },
   "verificationRuns": [
+    {
+      "timestamp": "2026-02-23T16:09:11Z",
+      "repo": "imageforge",
+      "command": "pnpm run check",
+      "status": "pass",
+      "note": "typecheck/lint/format/test all passed (106 tests, including split suites + edge cases)"
+    },
+    {
+      "timestamp": "2026-02-23T16:09:11Z",
+      "repo": "imageforge",
+      "command": "pnpm run test:e2e",
+      "status": "pass",
+      "note": "Packaged install + npx flow passed after Phase 6A updates"
+    },
+    {
+      "timestamp": "2026-02-23T16:09:11Z",
+      "repo": "imageforge",
+      "command": "pnpm exec vitest run tests/fault-injection.pilot.test.ts --reporter=json --outputFile=.tmp/fault-injection/report.json",
+      "status": "pass",
+      "note": "CLI fault-injection pilot produced advisory JSON report artifact format"
+    },
+    {
+      "timestamp": "2026-02-23T16:09:11Z",
+      "repo": "imageforge-site",
+      "command": "pnpm run check:ci",
+      "status": "pass",
+      "note": "lint/typecheck/format/build/seo gates passed after quality-gates fault-injection addition"
+    },
+    {
+      "timestamp": "2026-02-23T16:09:11Z",
+      "repo": "imageforge-site",
+      "command": "pnpm test:fault-injection",
+      "status": "pass",
+      "note": "Security audit wrapper fault-injection scenarios passed"
+    },
+    {
+      "timestamp": "2026-02-23T16:03:11Z",
+      "repo": "imageforge",
+      "command": "GitHub Actions: CI (PR #55)",
+      "status": "pass",
+      "note": "Required checks green; Coverage Advisory + Fault Injection Advisory jobs passed and uploaded artifacts"
+    },
+    {
+      "timestamp": "2026-02-23T16:03:42Z",
+      "repo": "imageforge-site",
+      "command": "GitHub Actions: CI (PR #39)",
+      "status": "pass",
+      "note": "Required checks green after site fault-injection pilot integration"
+    },
     {
       "timestamp": "2026-02-20T14:27:20Z",
       "repo": "imageforge-site",
@@ -146,9 +195,9 @@
   ],
   "deltaCounts": {
     "New": 4,
-    "Changed": 4,
-    "Unchanged": 7,
-    "Resolved": 18
+    "Changed": 3,
+    "Unchanged": 6,
+    "Resolved": 20
   },
   "findings": [
     {
@@ -175,8 +224,8 @@
           "note": "ESM-primary NodeNext compilation"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/imageforge.test.ts",
-          "line": 1785,
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/exports.test.ts",
+          "line": 15,
           "note": "local consumer require/import export matrix coverage"
         },
         {
@@ -205,7 +254,7 @@
       "evidence": [
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/package.json",
-          "line": 94,
+          "line": 113,
           "note": "engines.node >=22"
         },
         {
@@ -234,12 +283,12 @@
         },
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/src/runner.ts",
-          "line": 684,
+          "line": 139,
           "note": "runImageforge public function"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/imageforge.test.ts",
-          "line": 1785,
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/exports.test.ts",
+          "line": 15,
           "note": "asserts runner is available on subpath and absent from root"
         },
         {
@@ -316,53 +365,83 @@
       "repo": "imageforge",
       "domain": "Maintainability",
       "severity": "Medium",
-      "deltaStatus": "Unchanged",
-      "finding": "Core implementation and tests remain monolithic.",
+      "deltaStatus": "Resolved",
+      "finding": "Resolved in Phase 6A: runner responsibilities and test suites were decomposed into focused modules/files, removing the prior monolith hotspots.",
       "evidence": [
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/src/runner.ts",
-          "line": 1114,
-          "note": "file length"
+          "line": 1,
+          "note": "runner reduced to orchestration layer (~610 LOC)"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/imageforge.test.ts",
-          "line": 1819,
-          "note": "file length"
+          "path": "/Users/fabiencampana/Documents/ImageForge/src/runner/cache.ts",
+          "line": 1,
+          "note": "cache lifecycle and locking extracted"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/ImageForge/src/runner/preflight.ts",
+          "line": 1,
+          "note": "collision/preflight logic extracted"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/ImageForge/src/runner/reporting.ts",
+          "line": 1,
+          "note": "reporting/rerun helpers extracted"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/cli.integration.test.ts",
+          "line": 1,
+          "note": "CLI integration coverage split from monolithic suite"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/processor.test.ts",
+          "line": 1,
+          "note": "processor-specific coverage split from monolithic suite"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/config.test.ts",
+          "line": 1,
+          "note": "config-specific coverage split from monolithic suite"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/exports.test.ts",
+          "line": 1,
+          "note": "exports and runner contract coverage isolated"
         }
       ],
-      "impact": "Higher change risk and slower debugging/refactoring.",
-      "recommendation": "Split by responsibility (cache/preflight/report/tests by module).",
+      "impact": "Maintenance risk from single-file hotspots was reduced, making targeted refactors safer and easier to review.",
+      "recommendation": "Keep module boundaries explicit (cache/preflight/reporting) and avoid re-consolidating cross-cutting concerns into runner.ts.",
       "owner": "CLI Core",
-      "verification": ["Refactor with unchanged behavioral snapshots and full test pass"]
+      "verification": ["pnpm run check", "pnpm run test:e2e"]
     },
     {
       "id": "IF-CLI-TEST-007",
       "repo": "imageforge",
       "domain": "Validation Depth",
       "severity": "Medium",
-      "deltaStatus": "Changed",
-      "finding": "Test surface expanded, but runner internals still lack direct edge-case unit coverage.",
+      "deltaStatus": "Resolved",
+      "finding": "Resolved in Phase 6A: previously missing runner edge cases now have direct tests (atomic cache cleanup, corrupt preflight with widths, invalid orientation branch).",
       "evidence": [
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/benchmark-tools.test.ts",
-          "line": 128,
-          "note": "new benchmark test coverage exists"
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/exports.test.ts",
+          "line": 93,
+          "note": "atomic cache temp cleanup on rename failure path"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/src/runner.ts",
-          "line": 387,
-          "note": "saveCacheAtomic failure path"
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/cli.integration.test.ts",
+          "line": 757,
+          "note": "preflight corrupt image failure path with responsive widths"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/imageforge.test.ts",
-          "line": 508,
-          "note": "orientation happy path only"
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/processor.test.ts",
+          "line": 598,
+          "note": "invalid EXIF orientation fallback branch coverage"
         }
       ],
-      "impact": "Critical failure paths can still regress silently.",
-      "recommendation": "Add focused unit tests for cache atomicity, preflight corrupt images with widths, and invalid orientation values.",
+      "impact": "Critical runner/processing edge behaviors now have regression coverage and are less likely to fail silently.",
+      "recommendation": "Preserve these edge-case tests as required regression coverage when touching cache/preflight/orientation logic.",
       "owner": "CLI QA",
-      "verification": ["pnpm test with new targeted test cases"]
+      "verification": ["pnpm test", "pnpm run check"]
     },
     {
       "id": "IF-CLI-TEST-008",
@@ -392,19 +471,19 @@
       "finding": "Resolved in Phase 5: terminal-facing file path and error output now sanitize control characters before rendering.",
       "evidence": [
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/src/runner.ts",
-          "line": 146,
-          "note": "sanitizeForTerminal utility added for user-facing output"
+          "path": "/Users/fabiencampana/Documents/ImageForge/src/runner/preflight.ts",
+          "line": 22,
+          "note": "centralized terminal-safe escaping for control characters"
         },
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/src/runner.ts",
-          "line": 910,
-          "note": "relative path logging now uses sanitized value"
+          "line": 17,
+          "note": "sanitizer wired through discovery/reporting output paths"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/imageforge.test.ts",
-          "line": 1355,
-          "note": "regression test validates escaped control characters in --check output"
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/cli.integration.test.ts",
+          "line": 899,
+          "note": "CLI regression test verifies control characters are escaped in check output"
         }
       ],
       "impact": "Crafted filenames can no longer inject raw ANSI/control sequences into CLI output streams.",
@@ -425,18 +504,13 @@
       "evidence": [
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/src/processor.ts",
-          "line": 47,
-          "note": "fixed-size hash chunk constant"
-        },
-        {
-          "path": "/Users/fabiencampana/Documents/ImageForge/src/processor.ts",
           "line": 113,
-          "note": "chunked hashing loop in fileHash"
+          "note": "fileHash uses chunked sync read loop with bounded buffer"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/tests/imageforge.test.ts",
-          "line": 398,
-          "note": "large-file hash regression test"
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/processor.test.ts",
+          "line": 311,
+          "note": "large-file hashing regression test validates chunked implementation"
         }
       ],
       "impact": "Large-file hashing no longer requires loading the entire file in memory before digesting.",
@@ -1089,30 +1163,45 @@
       "domain": "Coverage Strategy",
       "severity": "Medium",
       "deltaStatus": "Changed",
-      "finding": "Coverage strategy improved materially on site UI (unit/component + E2E + visual + LHCI), but cross-repo coverage reporting and mutation/fault-injection governance remain incomplete.",
+      "finding": "Coverage governance improved in both repos (advisory coverage artifacts + targeted fault-injection pilots), but mutation-grade effectiveness checks are still not in place.",
       "evidence": [
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/vitest.config.ts",
-          "line": 3,
-          "note": "no coverage thresholds/reporting configured for CLI tests"
+          "path": "/Users/fabiencampana/Documents/ImageForge/.github/workflows/ci.yml",
+          "line": 118,
+          "note": "CLI coverage advisory job publishes artifacts"
         },
         {
-          "path": "/Users/fabiencampana/Documents/imageforge-site/package.json",
-          "line": 14,
-          "note": "new unit/e2e/visual/lhci scripts and quality gate bundle"
+          "path": "/Users/fabiencampana/Documents/ImageForge/.github/workflows/ci.yml",
+          "line": 163,
+          "note": "CLI fault-injection advisory job publishes artifacts"
         },
         {
-          "path": "/Users/fabiencampana/Documents/imageforge-site/tests/unit/components/benchmark/BenchmarkPageContent.test.tsx",
-          "line": 10,
-          "note": "site component test layer now exists"
+          "path": "/Users/fabiencampana/Documents/ImageForge/tests/fault-injection.pilot.test.ts",
+          "line": 1,
+          "note": "CLI injected-failure scenarios for benchmark sync critical path"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/imageforge-site/.github/workflows/quality-gates.yml",
+          "line": 51,
+          "note": "site advisory unit coverage execution and artifact retention"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/imageforge-site/.github/workflows/quality-gates.yml",
+          "line": 60,
+          "note": "site fault-injection advisory execution and artifact retention"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/imageforge-site/scripts/security/__tests__/audit-prod-deps.test.mjs",
+          "line": 1,
+          "note": "site injected-failure scenarios for deterministic security audit wrapper"
         }
       ],
-      "impact": "Regression detection breadth improved, but effectiveness trends are still hard to quantify without coverage and fault-injection signals.",
-      "recommendation": "Add coverage artifacts/threshold trends for both repos, then phase in mutation or targeted fault-injection for critical paths.",
+      "impact": "Regression signal depth is materially stronger, with actionable artifact trails for coverage and failure-injection results in both repos.",
+      "recommendation": "Keep advisory coverage/fault-injection reporting in place and plan a later phase for mutation testing or kill-rate targets on critical modules.",
       "owner": "CLI QA + Site QA",
       "verification": [
-        "CI coverage artifact publication in both repos",
-        "Periodic mutation/fault-injection run reports for critical modules"
+        "GitHub Actions: imageforge CI (Coverage Advisory + Fault Injection Advisory artifacts)",
+        "GitHub Actions: imageforge-site Quality Gates advisory artifacts (coverage + fault-injection output)"
       ]
     },
     {
@@ -1140,7 +1229,7 @@
         },
         {
           "path": "/Users/fabiencampana/Documents/imageforge-site/.github/workflows/quality-gates.yml",
-          "line": 69,
+          "line": 89,
           "note": "advisory CI execution of LHCI and visual suites with artifact retention"
         }
       ],
