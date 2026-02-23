@@ -18,6 +18,7 @@
 | 2026-02-23T16:09:11Z | imageforge-site | `pnpm test:fault-injection`                                                                                              | ✅ Pass | Security audit wrapper fail-closed fault-injection scenarios passed                            |
 | 2026-02-23T16:03:11Z | imageforge      | `GitHub Actions: CI (PR #55)`                                                                                            | ✅ Pass | Required checks green; coverage + fault-injection advisory jobs succeeded with artifact upload |
 | 2026-02-23T16:03:42Z | imageforge-site | `GitHub Actions: CI (PR #39)`                                                                                            | ✅ Pass | Required checks green for site fault-injection pilot integration                               |
+| 2026-02-23T16:11:08Z | imageforge-site | `GitHub Actions: Quality Gates (Advisory) push run 22314301872`                                                          | ✅ Pass | Advisory unit/coverage/fault-injection/E2E/visual/LHCI stack completed with artifact upload    |
 
 ## Delta Summary (vs 2026-02-15)
 
