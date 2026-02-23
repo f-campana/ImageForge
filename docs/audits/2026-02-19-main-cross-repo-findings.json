@@ -2,21 +2,49 @@
   "reportDate": "2026-02-23",
   "baselineDate": "2026-02-15",
   "baselineSource": "Prior audit snapshot provided in thread (2026-02-15).",
-  "generatedAt": "2026-02-23T20:30:00Z",
+  "generatedAt": "2026-02-23T22:25:00Z",
   "scope": {
     "imageforge": {
       "path": "/Users/fabiencampana/Documents/ImageForge",
       "branch": "main",
-      "sha": "ef65d3a77f4ea10b3fe464d3bd62ce5030403cb4"
+      "sha": "569057632aa56e57d86d793f3f9b0d515a6f8d5f"
     },
     "imageforgeSite": {
       "path": "/Users/fabiencampana/Documents/imageforge-site",
       "branch": "main",
-      "sha": "fcf69945c55dad84e0801fe534f2728b31b766e8",
+      "sha": "a5e181b8d0d680464ef621af2ff9f90b4c0d3161",
       "analyzedViaArchiveAt": "/Users/fabiencampana/Documents/imageforge-site"
     }
   },
   "verificationRuns": [
+    {
+      "timestamp": "2026-02-23T22:23:31Z",
+      "repo": "imageforge-site",
+      "command": "GitHub Actions: CI + Animation Safety + Quality Gates (PR #44)",
+      "status": "pass",
+      "note": "All required checks and advisory gates passed after site mutation advisory trend rollout."
+    },
+    {
+      "timestamp": "2026-02-23T22:19:57Z",
+      "repo": "imageforge",
+      "command": "GitHub Actions: CI (PR #65)",
+      "status": "pass",
+      "note": "Required checks passed with CLI mutation baseline trend summary and artifacts."
+    },
+    {
+      "timestamp": "2026-02-23T22:19:21Z",
+      "repo": "imageforge-site",
+      "command": "pnpm run test:mutation:pilot",
+      "status": "pass",
+      "note": "Site mutation advisory pilot completed and emitted HTML/JSON artifacts."
+    },
+    {
+      "timestamp": "2026-02-23T22:18:40Z",
+      "repo": "imageforge-site",
+      "command": "pnpm run check:ci",
+      "status": "pass",
+      "note": "Deterministic CI gate stayed green after mutation advisory integration."
+    },
     {
       "timestamp": "2026-02-23T20:27:00Z",
       "repo": "imageforge",
@@ -123,13 +151,6 @@
       "note": "Blocking freshness gate emitted pass report for PRICING_AS_OF age within threshold"
     },
     {
-      "timestamp": "2026-02-23T16:58:41Z",
-      "repo": "imageforge-site",
-      "command": "pnpm run check:ci",
-      "status": "pass",
-      "note": "Deterministic SEO CI path passed with placeholder-domain noise control"
-    },
-    {
       "timestamp": "2026-02-23T16:09:11Z",
       "repo": "imageforge",
       "command": "pnpm run check",
@@ -149,13 +170,6 @@
       "command": "pnpm exec vitest run tests/fault-injection.pilot.test.ts --reporter=json --outputFile=.tmp/fault-injection/report.json",
       "status": "pass",
       "note": "CLI fault-injection pilot produced advisory JSON report artifact format"
-    },
-    {
-      "timestamp": "2026-02-23T16:09:11Z",
-      "repo": "imageforge-site",
-      "command": "pnpm run check:ci",
-      "status": "pass",
-      "note": "lint/typecheck/format/build/seo gates passed after quality-gates fault-injection addition"
     },
     {
       "timestamp": "2026-02-23T16:09:11Z",
@@ -207,13 +221,6 @@
       "note": "Primary pnpm audit passed; retry/fallback path active"
     },
     {
-      "timestamp": "2026-02-20T14:25:44Z",
-      "repo": "imageforge-site",
-      "command": "pnpm run check:ci",
-      "status": "pass",
-      "note": "lint/typecheck/format/build/seo gates passed"
-    },
-    {
       "timestamp": "2026-02-20T14:27:20Z",
       "repo": "imageforge",
       "command": "node scripts/security/check-workflow-action-pinning.mjs",
@@ -261,13 +268,6 @@
       "command": "pnpm audit --prod --audit-level=high",
       "status": "pass",
       "note": "No known vulnerabilities found"
-    },
-    {
-      "timestamp": "2026-02-19T16:07:35Z",
-      "repo": "imageforge-site",
-      "command": "pnpm run check:ci",
-      "status": "pass",
-      "note": "Full CI-parity gate passed"
     },
     {
       "timestamp": "2026-02-19T16:07:28Z",
@@ -1424,7 +1424,7 @@
       "domain": "Coverage Strategy",
       "severity": "Medium",
       "deltaStatus": "Changed",
-      "finding": "Coverage governance now includes advisory coverage artifacts, fault-injection pilots, and a CLI mutation-testing advisory pilot with published artifacts; full closure still requires broader mutation policy/coverage (including site-side mutation signal).",
+      "finding": "Coverage governance now includes advisory coverage artifacts, fault-injection pilots, and mutation-testing advisory pilots with baseline trend summaries in both repos; full closure still requires policy-backed thresholds and enforcement posture.",
       "evidence": [
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/.github/workflows/ci.yml",
@@ -1439,36 +1439,52 @@
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/.github/workflows/ci.yml",
           "line": 220,
-          "note": "mutation advisory job added"
+          "note": "CLI mutation advisory job with summary + artifact upload"
         },
         {
-          "path": "/Users/fabiencampana/Documents/ImageForge/stryker.conf.mjs",
+          "path": "/Users/fabiencampana/Documents/ImageForge/.github/mutation-baseline.json",
           "line": 1,
-          "note": "CLI mutation pilot configuration"
+          "note": "CLI mutation baseline for trend deltas"
         },
         {
           "path": "/Users/fabiencampana/Documents/ImageForge/scripts/testing/summarize-mutation-report.mjs",
           "line": 1,
-          "note": "CI mutation summary + machine-readable artifact helper"
+          "note": "CLI mutation summary + trend helper"
         },
         {
           "path": "/Users/fabiencampana/Documents/imageforge-site/.github/workflows/quality-gates.yml",
-          "line": 51,
-          "note": "site coverage advisory remains active"
+          "line": 71,
+          "note": "site mutation advisory step"
         },
         {
           "path": "/Users/fabiencampana/Documents/imageforge-site/.github/workflows/quality-gates.yml",
-          "line": 60,
-          "note": "site fault-injection advisory remains active"
+          "line": 82,
+          "note": "site mutation summary step with baseline + artifact output"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/imageforge-site/stryker.conf.mjs",
+          "line": 1,
+          "note": "site mutation pilot configuration"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/imageforge-site/.github/mutation-baseline.json",
+          "line": 1,
+          "note": "site mutation baseline for trend deltas"
+        },
+        {
+          "path": "/Users/fabiencampana/Documents/imageforge-site/scripts/testing/summarize-mutation-report.mjs",
+          "line": 1,
+          "note": "site mutation summary + trend helper"
         }
       ],
-      "impact": "Regression signal depth is materially stronger and now includes mutation artifacts on CLI critical paths, but policy remains advisory and incomplete cross-repo.",
-      "recommendation": "Keep mutation advisory pilot running and plan a follow-on phase for mutation thresholds + site-side mutation signal before marking this area fully resolved.",
+      "impact": "Regression signal depth now includes cross-repo mutation artifacts and trend baselines, but enforcement remains advisory and lacks policy thresholds.",
+      "recommendation": "Define per-repo mutation-score policy targets, keep reporting advisory while calibrating flake, then ratchet toward fail-closed enforcement for stable scopes.",
       "owner": "CLI QA + Site QA",
       "verification": [
-        "pnpm run test:mutation:pilot",
-        "GitHub Actions: CI (PR #63) mutation advisory artifact upload",
-        "Existing coverage/fault-injection advisory artifacts in both repos"
+        "pnpm run test:mutation:pilot (ImageForge)",
+        "pnpm -C /Users/fabiencampana/Documents/imageforge-site run test:mutation:pilot",
+        "GitHub Actions: CI (PR #65) mutation advisory artifact upload",
+        "GitHub Actions: Quality Gates (PR #44) mutation advisory artifact upload"
       ]
     },
     {
