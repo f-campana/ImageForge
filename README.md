@@ -52,7 +52,7 @@ Generate optimized derivatives (`webp`, `avif`) and `blurDataURL` placeholders w
 
 ## Install
 
-Runtime requirement: **Node.js >= 22**.
+Runtime requirement: **Node.js >= 20**.
 
 Install globally:
 
@@ -335,7 +335,7 @@ pnpm test
 pnpm run check
 ```
 
-Quality checks run in CI on Node `22` and `24`.
+Quality checks run in CI on Node `20`, `22`, and `24`.
 
 ## Release Workflow
 
