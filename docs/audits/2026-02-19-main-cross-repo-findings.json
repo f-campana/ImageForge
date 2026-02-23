@@ -67,6 +67,13 @@
       "note": "Required checks green after site fault-injection pilot integration"
     },
     {
+      "timestamp": "2026-02-23T16:11:08Z",
+      "repo": "imageforge-site",
+      "command": "GitHub Actions: Quality Gates (Advisory) push run 22314301872",
+      "status": "pass",
+      "note": "Advisory unit/coverage/fault-injection/e2e/visual/lhci stack completed and artifacts uploaded on main"
+    },
+    {
       "timestamp": "2026-02-20T14:27:20Z",
       "repo": "imageforge-site",
       "command": "node scripts/security/check-workflow-action-pinning.mjs",
